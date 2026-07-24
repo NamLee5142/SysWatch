@@ -7,7 +7,7 @@
 
 class Snapshot {
 public:
-    Snapshot();
+    Snapshot() = default;
 
     CPUInfo cpuInfo;
     MemoryInfo memoryInfo;

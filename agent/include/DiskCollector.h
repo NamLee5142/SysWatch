@@ -1,8 +1,10 @@
 #pragma once
 
-#include "Collector.h"
+#include "DiskInfo.h"
 
-class DiskCollector : public Collector {
+class DiskCollector {
 public:
-    ~DiskCollector() override;
+    DiskInfo collect() const {
+        return DiskInfo();
+    }
 };

@@ -1,8 +1,10 @@
 #pragma once
 
-#include "Collector.h"
+#include "CPUInfo.h"
 
-class CPUCollector : public Collector {
+class CPUCollector {
 public:
-    ~CPUCollector() override;
+    CPUInfo collect() const {
+        return CPUInfo();
+    }
 };

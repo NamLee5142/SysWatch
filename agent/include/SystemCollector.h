@@ -1,8 +1,10 @@
 #pragma once
 
-#include "Collector.h"
+#include "SystemInfo.h"
 
-class SystemCollector : public Collector {
+class SystemCollector {
 public:
-    ~SystemCollector() override;
+    SystemInfo collect() const {
+        return SystemInfo();
+    }
 };

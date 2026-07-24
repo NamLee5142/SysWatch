@@ -1,8 +1,10 @@
 #pragma once
 
-#include "Collector.h"
+#include "MemoryInfo.h"
 
-class MemoryCollector : public Collector {
+class MemoryCollector {
 public:
-    ~MemoryCollector() override;
+    MemoryInfo collect() const {
+        return MemoryInfo();
+    }
 };
