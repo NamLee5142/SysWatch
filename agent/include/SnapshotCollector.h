@@ -8,12 +8,20 @@
 
 class SnapshotCollector {
 public:
+    SnapshotCollector() = default;
+
     Snapshot collect() const {
         Snapshot snapshot;
-        snapshot.cpuInfo = CPUCollector().collect();
-        snapshot.memoryInfo = MemoryCollector().collect();
-        snapshot.diskInfo = DiskCollector().collect();
-        snapshot.systemInfo = OsCollector().collect();
+        snapshot.cpuInfo = cpuCollector.collect();
+        snapshot.memoryInfo = memoryCollector.collect();
+        snapshot.diskInfo = diskCollector.collect();
+        snapshot.systemInfo = osCollector.collect();
         return snapshot;
     }
+
+private:
+    CPUCollector cpuCollector;
+    MemoryCollector memoryCollector;
+    DiskCollector diskCollector;
+    OsCollector osCollector;
 };
