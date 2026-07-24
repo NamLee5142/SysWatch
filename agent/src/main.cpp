@@ -1,8 +1,10 @@
 #include <iostream>
-#include "Snapshot.h"
+#include "SnapshotCollector.h"
 
 int main() {
-    Snapshot snapshot;
+    SnapshotCollector collector;
+    auto snapshot = collector.collect();
+    (void)snapshot;
     std::cout << "Snapshot created successfully." << std::endl;
     return 0;
 }
