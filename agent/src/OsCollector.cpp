@@ -15,14 +15,16 @@ SystemInfo OsCollector::collect() const {
     info.name = "Microsoft Windows";
 
     // Use RtlGetVersion, which is not subject to the compatibility manifest version lie.
-    typedef LONG (WINAPI *RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
+    using RtlGetVersionPtr = LONG (WINAPI*)(PRTL_OSVERSIONINFOW);
+    constexpr LONG STATUS_SUCCESS = 0;
+
     HMODULE ntdll = GetModuleHandleA("ntdll.dll");
     if (ntdll) {
         auto rtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(GetProcAddress(ntdll, "RtlGetVersion"));
         if (rtlGetVersion) {
             RTL_OSVERSIONINFOW versionInfo = {};
             versionInfo.dwOSVersionInfoSize = sizeof(versionInfo);
-            if (rtlGetVersion(&versionInfo) == 0) {
+            if (rtlGetVersion(&versionInfo) == STATUS_SUCCESS) {
                 info.version = std::to_string(versionInfo.dwMajorVersion) + "." + std::to_string(versionInfo.dwMinorVersion);
             }
         }
