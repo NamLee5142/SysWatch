@@ -25,7 +25,7 @@ SystemInfo OsCollector::collect() const {
             RTL_OSVERSIONINFOW versionInfo = {};
             versionInfo.dwOSVersionInfoSize = sizeof(versionInfo);
             if (rtlGetVersion(&versionInfo) == STATUS_SUCCESS) {
-                info.version = std::to_string(versionInfo.dwMajorVersion) + "." + std::to_string(versionInfo.dwMinorVersion);
+                info.version = std::to_string(versionInfo.dwMajorVersion) + "." + std::to_string(versionInfo.dwMinorVersion) + "." + std::to_string(versionInfo.dwBuildNumber);
             }
         }
     }
