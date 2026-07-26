@@ -4,7 +4,6 @@
 
 class CPUCollector {
 public:
-    CPUInfo collect() const {
-        return CPUInfo();
-    }
+    CPUCollector() = default;
+    CPUInfo collect() const;
 };

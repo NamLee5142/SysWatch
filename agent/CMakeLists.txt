@@ -9,6 +9,10 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 add_executable(agent
     src/main.cpp
+    src/CPUCollector.cpp
+    src/MemoryCollector.cpp
+    src/DiskCollector.cpp
+    src/OsCollector.cpp
 )
 
 target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/include)

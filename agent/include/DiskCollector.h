@@ -4,7 +4,6 @@
 
 class DiskCollector {
 public:
-    DiskInfo collect() const {
-        return DiskInfo();
-    }
+    DiskCollector() = default;
+    DiskInfo collect() const;
 };
