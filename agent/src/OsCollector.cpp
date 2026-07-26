@@ -6,14 +6,13 @@
 SystemInfo OsCollector::collect() const {
     SystemInfo info;
 #ifdef _WIN32
-    CHAR nameBuffer[MAX_COMPUTERNAME_LENGTH + 1];
-    DWORD size = sizeof(nameBuffer);
-    if (GetComputerNameA(nameBuffer, &size)) {
-        info.name = std::string(nameBuffer, size);
-    } else {
-        info.name = "Windows";
+    CHAR hostNameBuffer[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD hostNameSize = sizeof(hostNameBuffer);
+    if (GetComputerNameA(hostNameBuffer, &hostNameSize)) {
+        info.hostName = std::string(hostNameBuffer, hostNameSize);
     }
 
+    info.name = "Microsoft Windows";
     OSVERSIONINFOA osvi = {};
     osvi.dwOSVersionInfoSize = sizeof(osvi);
     if (GetVersionExA(&osvi)) {
