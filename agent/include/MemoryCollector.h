@@ -4,7 +4,6 @@
 
 class MemoryCollector {
 public:
-    MemoryInfo collect() const {
-        return MemoryInfo();
-    }
+    MemoryCollector() = default;
+    MemoryInfo collect() const;
 };

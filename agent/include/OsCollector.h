@@ -4,7 +4,6 @@
 
 class OsCollector {
 public:
-    SystemInfo collect() const {
-        return SystemInfo();
-    }
+    OsCollector() = default;
+    SystemInfo collect() const;
 };
