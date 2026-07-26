@@ -13,11 +13,22 @@ SystemInfo OsCollector::collect() const {
     }
 
     info.name = "Microsoft Windows";
-    OSVERSIONINFOA osvi = {};
-    osvi.dwOSVersionInfoSize = sizeof(osvi);
-    if (GetVersionExA(&osvi)) {
-        info.version = std::to_string(osvi.dwMajorVersion) + "." + std::to_string(osvi.dwMinorVersion);
-    } else {
+
+    // Use RtlGetVersion, which is not subject to the compatibility manifest version lie.
+    typedef LONG (WINAPI *RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+    if (ntdll) {
+        auto rtlGetVersion = reinterpret_cast<RtlGetVersionPtr>(GetProcAddress(ntdll, "RtlGetVersion"));
+        if (rtlGetVersion) {
+            RTL_OSVERSIONINFOW versionInfo = {};
+            versionInfo.dwOSVersionInfoSize = sizeof(versionInfo);
+            if (rtlGetVersion(&versionInfo) == 0) {
+                info.version = std::to_string(versionInfo.dwMajorVersion) + "." + std::to_string(versionInfo.dwMinorVersion);
+            }
+        }
+    }
+
+    if (info.version.empty()) {
         info.version = "unknown";
     }
 #endif
