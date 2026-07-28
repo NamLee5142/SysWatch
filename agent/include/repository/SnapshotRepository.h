@@ -2,9 +2,9 @@
 
 #include "domain/Snapshot.h"
 
-// Placeholder repository interface for future snapshot persistence.
+// Lightweight repository for snapshot persistence.
 class SnapshotRepository {
 public:
-    virtual ~SnapshotRepository() = default;
-    virtual void save(const Snapshot &snapshot) = 0;
+    SnapshotRepository() = default;
+    void save(const Snapshot &snapshot);
 };

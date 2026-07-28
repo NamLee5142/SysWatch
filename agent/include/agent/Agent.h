@@ -2,11 +2,11 @@
 
 #include <memory>
 #include "collector/SnapshotCollector.h"
+#include "repository/SnapshotRepository.h"
 
 namespace agent {
 
 class Scheduler;
-class SnapshotRepository;
 
 class Agent {
 public:
@@ -18,7 +18,7 @@ public:
 
 private:
     SnapshotCollector collector_;
-    std::unique_ptr<SnapshotRepository> repository_;
+    SnapshotRepository repository_;
     std::unique_ptr<Scheduler> scheduler_;
 };
 
