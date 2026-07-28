@@ -7,18 +7,21 @@ namespace agent {
 
 class Scheduler {
 public:
-    using Callback = std::function<void()>;
+    using Task = std::function<void()>;
 
-    Scheduler(std::chrono::milliseconds interval, Callback callback);
+    Scheduler(std::chrono::milliseconds interval, Task task);
     ~Scheduler();
+
+    Scheduler(const Scheduler&) = delete;
+    Scheduler& operator=(const Scheduler&) = delete;
 
     void start();
     void stop();
 
 private:
     std::chrono::milliseconds interval_;
-    Callback callback_;
-    bool running_ = false;
+    Task task_;
+    std::atomic_bool running_{false};
 };
 
 } // namespace agent
