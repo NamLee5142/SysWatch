@@ -1,9 +1,14 @@
 #pragma once
 
-// Placeholder for the public agent runtime interface.
-// Implement this when the agent runner needs a pluggable execution entrypoint.
+namespace agent {
+
 class Agent {
 public:
-    virtual ~Agent() = default;
-    virtual void run() = 0;
+    Agent() noexcept;
+    virtual ~Agent() noexcept;
+
+    virtual void start() = 0;
+    virtual void stop() = 0;
 };
+
+} // namespace agent
