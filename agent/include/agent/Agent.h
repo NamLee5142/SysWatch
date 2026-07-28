@@ -1,14 +1,25 @@
 #pragma once
 
+#include <memory>
+#include "collector/SnapshotCollector.h"
+
 namespace agent {
+
+class Scheduler;
+class SnapshotRepository;
 
 class Agent {
 public:
-    Agent() noexcept;
-    virtual ~Agent() noexcept;
+    Agent();
+    ~Agent();
 
-    virtual void start() = 0;
-    virtual void stop() = 0;
+    void start();
+    void stop();
+
+private:
+    SnapshotCollector collector_;
+    std::unique_ptr<SnapshotRepository> repository_;
+    std::unique_ptr<Scheduler> scheduler_;
 };
 
 } // namespace agent

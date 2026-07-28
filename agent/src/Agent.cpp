@@ -1,4 +1,10 @@
 #include "agent/Agent.h"
+#include "repository/SnapshotRepository.h"
+#include "scheduler/Scheduler.h"
 
-Agent::Agent() noexcept = default;
-Agent::~Agent() noexcept = default;
+namespace agent {
+
+Agent::Agent() = default;
+Agent::~Agent() = default;
+
+} // namespace agent
