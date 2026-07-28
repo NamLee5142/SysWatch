@@ -1,4 +1,5 @@
 #include "agent/Agent.h"
+#include "scheduler/Scheduler.h"
 
 namespace agent {
 

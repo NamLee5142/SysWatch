@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(agent_core STATIC
     src/Agent.cpp
+    src/repository/SnapshotRepository.cpp
     src/collector/CPUCollector.cpp
     src/collector/MemoryCollector.cpp
     src/collector/DiskCollector.cpp
