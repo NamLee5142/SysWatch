@@ -1,5 +1,5 @@
 #include <iostream>
-#include "SnapshotCollector.h"
+#include "collector/SnapshotCollector.h"
 
 int main() {
     SnapshotCollector collector;

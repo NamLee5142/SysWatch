@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CPUInfo.h"
+#include "domain/CPUInfo.h"
 
 class CPUCollector {
 public:

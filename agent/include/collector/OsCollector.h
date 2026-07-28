@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SystemInfo.h"
+#include "domain/SystemInfo.h"
 
 class OsCollector {
 public:

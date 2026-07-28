@@ -1,4 +1,4 @@
-#include "CPUCollector.h"
+#include "collector/CPUCollector.h"
 #ifdef _WIN32
 #include <windows.h>
 #endif
