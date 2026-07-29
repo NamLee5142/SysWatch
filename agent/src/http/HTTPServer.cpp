@@ -6,13 +6,7 @@
 namespace http {
 
 HTTPServer::HTTPServer(agent::Agent &agent)
-    : agent_(agent), port_(agent::AgentConfig().serverPort) {
-#if defined(_WIN32)
-    listenSocket_ = INVALID_SOCKET;
-#else
-    listenSocket_ = -1;
-#endif
-}
+    : HTTPServer(agent, DefaultPort) {}
 
 HTTPServer::HTTPServer(agent::Agent &agent, unsigned short port)
     : agent_(agent), port_(port) {
@@ -45,6 +39,7 @@ void HTTPServer::start() {
     listenSocket_ = socket(AF_INET, SOCK_STREAM, 0);
 #endif
     if (listenSocket_ == -1 || listenSocket_ == INVALID_SOCKET) {
+        cleanupSocket();
         return;
     }
 
@@ -61,36 +56,22 @@ void HTTPServer::start() {
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
     if (bind(listenSocket_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
-        // cleanup
-#if defined(_WIN32)
-        closesocket(listenSocket_);
-#else
-        close(listenSocket_);
-#endif
-        listenSocket_ = -1;
-#if defined(_WIN32)
-        if (winsockStarted_) WSACleanup();
-        winsockStarted_ = false;
-#endif
+        cleanupSocket();
         return;
     }
 
     if (listen(listenSocket_, SOMAXCONN) != 0) {
-        // cleanup
-#if defined(_WIN32)
-        closesocket(listenSocket_);
-#else
-        close(listenSocket_);
-#endif
-        listenSocket_ = -1;
-#if defined(_WIN32)
-        if (winsockStarted_) WSACleanup();
-        winsockStarted_ = false;
-#endif
+        cleanupSocket();
         return;
     }
 
-    running_.store(true);
+    // make running_ transition atomic and avoid races
+    if (running_.exchange(true)) {
+        // already running; cleanup this socket
+        cleanupSocket();
+        return;
+    }
+
     serverThread_ = std::thread([this]() {
         while (running_.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -99,18 +80,27 @@ void HTTPServer::start() {
 }
 
 void HTTPServer::stop() {
-    if (!running_.load()) return;
-    running_.store(false);
+    if (!running_.exchange(false)) return;
 
     if (serverThread_.joinable()) serverThread_.join();
 
+    cleanupSocket();
+}
+
+void HTTPServer::cleanupSocket() {
     if (listenSocket_ != -1 && listenSocket_ != INVALID_SOCKET) {
 #if defined(_WIN32)
         closesocket(listenSocket_);
 #else
         close(listenSocket_);
 #endif
-        listenSocket_ = -1;
+        listenSocket_ =
+#if defined(_WIN32)
+            INVALID_SOCKET
+#else
+            -1
+#endif
+            ;
     }
 
 #if defined(_WIN32)

@@ -34,6 +34,9 @@ private:
     unsigned short port_{8080};
     SocketHandle listenSocket_;
     bool winsockStarted_{false};
+    static constexpr unsigned short DefaultPort = 8080;
+
+    void cleanupSocket();
 };
 
 } // namespace http
