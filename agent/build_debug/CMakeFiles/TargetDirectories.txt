@@ -1,8 +1,0 @@
-C:/SysWatch/agent/build_debug/CMakeFiles/agent_core.dir
-C:/SysWatch/agent/build_debug/CMakeFiles/agent.dir
-C:/SysWatch/agent/build_debug/CMakeFiles/agent_tests.dir
-C:/SysWatch/agent/build_debug/CMakeFiles/http_server_tests.dir
-C:/SysWatch/agent/build_debug/CMakeFiles/http_server_accept_tests.dir
-C:/SysWatch/agent/build_debug/CMakeFiles/http_request_parse_tests.dir
-C:/SysWatch/agent/build_debug/CMakeFiles/edit_cache.dir
-C:/SysWatch/agent/build_debug/CMakeFiles/rebuild_cache.dir
