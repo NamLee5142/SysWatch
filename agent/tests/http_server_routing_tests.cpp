@@ -83,7 +83,7 @@ int main() {
     std::string response;
     bool ok = sendRequest("GET /snapshot HTTP/1.1\r\nHost: localhost\r\n\r\n", response, port);
     assert(ok);
-    assert(response.find("200 OK") != std::string::npos);
+    assert(response.find("204 No Content") != std::string::npos);
 
     response.clear();
     ok = sendRequest("GET /unknown HTTP/1.1\r\nHost: localhost\r\n\r\n", response, port);

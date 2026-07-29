@@ -17,6 +17,9 @@ std::string buildHttpResponseString(const HttpResponse &response) {
         case 200:
             out << "OK";
             break;
+        case 204:
+            out << "No Content";
+            break;
         case 404:
             out << "Not Found";
             break;
