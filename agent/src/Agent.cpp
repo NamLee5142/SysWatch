@@ -13,8 +13,7 @@ void Agent::start() {
     }
 
     scheduler_ = std::make_unique<Scheduler>(std::chrono::seconds(1), [this] {
-        auto snapshot = collector_.collect();
-        repository_.save(snapshot);
+        collectCycle();
     });
     scheduler_->start();
 }
@@ -26,6 +25,11 @@ void Agent::stop() {
 
     scheduler_->stop();
     scheduler_.reset();
+}
+
+void Agent::collectCycle() {
+    auto snapshot = collector_.collect();
+    repository_.save(snapshot);
 }
 
 } // namespace agent

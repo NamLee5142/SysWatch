@@ -17,6 +17,8 @@ public:
     void stop();
 
 private:
+    void collectCycle();
+
     SnapshotCollector collector_;
     SnapshotRepository repository_;
     std::unique_ptr<Scheduler> scheduler_;
