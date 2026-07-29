@@ -4,7 +4,9 @@
 
 namespace agent {
 
-Agent::Agent() = default;
+Agent::Agent(AgentConfig config)
+    : config_(std::move(config)) {}
+
 Agent::~Agent() = default;
 
 void Agent::start() {
@@ -12,7 +14,7 @@ void Agent::start() {
         return;
     }
 
-    scheduler_ = std::make_unique<Scheduler>(std::chrono::seconds(1), [this] {
+    scheduler_ = std::make_unique<Scheduler>(config_.collectionInterval, [this] {
         collectCycle();
     });
     scheduler_->start();
