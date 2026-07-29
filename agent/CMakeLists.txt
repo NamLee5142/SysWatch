@@ -60,4 +60,12 @@ target_link_libraries(http_server_accept_tests PRIVATE agent_core)
 
 target_include_directories(http_server_accept_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
+add_executable(http_request_parse_tests
+    tests/http_request_parse_tests.cpp
+)
+
+target_link_libraries(http_request_parse_tests PRIVATE agent_core)
+
+target_include_directories(http_request_parse_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
 # hello_test removed

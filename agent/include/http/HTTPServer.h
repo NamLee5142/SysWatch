@@ -38,6 +38,7 @@ private:
 
     void cleanupSocket();
     void acceptLoop();
+    void handleClient(SocketHandle clientSocket);
 };
 
 } // namespace http

@@ -1,6 +1,8 @@
 #include "http/HTTPServer.h"
+#include "http/HttpRequest.h"
 #include <chrono>
 #include <cstring>
+#include <vector>
 
 namespace http {
 
@@ -116,12 +118,36 @@ void HTTPServer::acceptLoop() {
             continue;
         }
 
-#if defined(_WIN32)
-        closesocket(clientSocket);
-#else
-        close(clientSocket);
-#endif
+        handleClient(clientSocket);
     }
+}
+
+void HTTPServer::handleClient(SocketHandle clientSocket) {
+    std::vector<char> buffer(4096);
+    std::string rawRequest;
+
+    while (running_.load()) {
+        int bytesRead = recv(clientSocket, buffer.data(), static_cast<int>(buffer.size()), 0);
+        if (bytesRead <= 0) {
+            break;
+        }
+
+        rawRequest.append(buffer.data(), bytesRead);
+        if (rawRequest.find("\r\n\r\n") != std::string::npos) {
+            break;
+        }
+    }
+
+    http::HttpRequest request;
+    if (parseHttpRequest(rawRequest, request)) {
+        // Parsed request can be used in later commits.
+    }
+
+#if defined(_WIN32)
+    closesocket(clientSocket);
+#else
+    close(clientSocket);
+#endif
 }
 
 } // namespace http
