@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include "collector/SnapshotCollector.h"
 #include "config/AgentConfig.h"
 #include "repository/SnapshotRepository.h"
@@ -19,6 +20,8 @@ public:
 
     void start();
     void stop();
+
+    std::optional<Snapshot> latestSnapshot() const;
 
 private:
     void collectCycle();

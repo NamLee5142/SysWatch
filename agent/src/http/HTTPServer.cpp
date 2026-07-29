@@ -54,12 +54,19 @@ bool sendAll(SocketHandle socket, const char *data, size_t size) {
     return true;
 }
 
-HttpResponse routeRequest(const HttpRequest &request) {
+HttpResponse routeRequest(const HttpRequest &request, const agent::Agent &agent) {
     HttpResponse response;
     if (request.method == "GET" && request.path == "/snapshot") {
-        response.status = 200;
-        response.headers["Content-Type"] = "text/plain";
-        response.body = "";
+        auto snapshot = agent.latestSnapshot();
+        if (snapshot) {
+            response.status = 200;
+            response.headers["Content-Type"] = "text/plain";
+            response.body = "";
+        } else {
+            response.status = 204;
+            response.headers["Content-Type"] = "text/plain";
+            response.body = "";
+        }
     } else {
         response.status = 404;
         response.headers["Content-Type"] = "text/plain";
@@ -206,7 +213,7 @@ void HTTPServer::handleClient(SocketHandle clientSocket) {
     http::HttpResponse response;
 
     if (parseHttpRequest(rawRequest, request)) {
-        response = routeRequest(request);
+        response = routeRequest(request, agent_);
     } else {
         response.status = 400;
         response.headers["Content-Type"] = "text/plain";
