@@ -1,10 +1,74 @@
 #include "http/HTTPServer.h"
 #include "http/HttpParser.h"
+#include "http/HttpResponse.h"
 #include <chrono>
 #include <cstring>
+#include <sstream>
 #include <vector>
 
 namespace http {
+
+namespace {
+
+std::string buildHttpResponseString(const HttpResponse &response) {
+    std::ostringstream out;
+    out << "HTTP/1.1 " << response.status << " ";
+    switch (response.status) {
+        case 200:
+            out << "OK";
+            break;
+        case 404:
+            out << "Not Found";
+            break;
+        case 400:
+            out << "Bad Request";
+            break;
+        default:
+            out << "Status";
+            break;
+    }
+    out << "\r\n";
+
+    if (response.headers.find("Content-Length") == response.headers.end()) {
+        out << "Content-Length: " << response.body.size() << "\r\n";
+    }
+
+    for (const auto &header : response.headers) {
+        out << header.first << ": " << header.second << "\r\n";
+    }
+
+    out << "\r\n";
+    out << response.body;
+    return out.str();
+}
+
+bool sendAll(SocketHandle socket, const char *data, size_t size) {
+    size_t totalSent = 0;
+    while (totalSent < size) {
+        int sent = static_cast<int>(send(socket, data + totalSent, static_cast<int>(size - totalSent), 0));
+        if (sent <= 0) {
+            return false;
+        }
+        totalSent += static_cast<size_t>(sent);
+    }
+    return true;
+}
+
+HttpResponse routeRequest(const HttpRequest &request) {
+    HttpResponse response;
+    if (request.method == "GET" && request.path == "/snapshot") {
+        response.status = 200;
+        response.headers["Content-Type"] = "text/plain";
+        response.body = "";
+    } else {
+        response.status = 404;
+        response.headers["Content-Type"] = "text/plain";
+        response.body = "Not Found";
+    }
+    return response;
+}
+
+} // namespace
 
 HTTPServer::HTTPServer(agent::Agent &agent)
     : HTTPServer(agent, DefaultPort) {}
@@ -139,9 +203,18 @@ void HTTPServer::handleClient(SocketHandle clientSocket) {
     }
 
     http::HttpRequest request;
+    http::HttpResponse response;
+
     if (parseHttpRequest(rawRequest, request)) {
-        // Parsed request can be used in later commits.
+        response = routeRequest(request);
+    } else {
+        response.status = 400;
+        response.headers["Content-Type"] = "text/plain";
+        response.body = "Bad Request";
     }
+
+    std::string responseText = buildHttpResponseString(response);
+    sendAll(clientSocket, responseText.c_str(), responseText.size());
 
 #if defined(_WIN32)
     closesocket(clientSocket);
