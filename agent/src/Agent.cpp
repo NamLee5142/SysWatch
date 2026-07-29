@@ -1,12 +1,11 @@
 #include "agent/Agent.h"
 #include "scheduler/Scheduler.h"
 #include <chrono>
-#include <iostream>
 
 namespace agent {
 
-Agent::Agent(AgentConfig config)
-    : config_(std::move(config)) {}
+Agent::Agent(AgentConfig config, SnapshotHandler onSnapshot)
+    : config_(std::move(config)), onSnapshot_(std::move(onSnapshot)) {}
 
 Agent::~Agent() = default;
 
@@ -30,18 +29,13 @@ void Agent::stop() {
     scheduler_.reset();
 }
 
-#include <iostream>
-
 void Agent::collectCycle() {
     auto snapshot = collector_.collect();
     repository_.save(snapshot);
 
-    std::cout << "Snapshot: "
-              << "CPU=" << snapshot.cpuInfo.usagePercent << "% "
-              << "Memory=" << snapshot.memoryInfo.usedMB << "MB/" << snapshot.memoryInfo.totalMB << "MB "
-              << "Disk=" << snapshot.diskInfo.freeGB << "GB free/" << snapshot.diskInfo.totalGB << "GB "
-              << "System=" << snapshot.systemInfo.name << " " << snapshot.systemInfo.version
-              << std::endl;
+    if (onSnapshot_) {
+        onSnapshot_(snapshot);
+    }
 }
 
 } // namespace agent

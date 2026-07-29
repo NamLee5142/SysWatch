@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include "collector/SnapshotCollector.h"
 #include "config/AgentConfig.h"
@@ -11,7 +12,9 @@ class Scheduler;
 
 class Agent {
 public:
-    explicit Agent(AgentConfig config = {});
+    using SnapshotHandler = std::function<void(const Snapshot&)>;
+
+    explicit Agent(AgentConfig config = {}, SnapshotHandler onSnapshot = {});
     ~Agent();
 
     void start();
@@ -24,6 +27,7 @@ private:
     SnapshotCollector collector_;
     SnapshotRepository repository_;
     std::unique_ptr<Scheduler> scheduler_;
+    SnapshotHandler onSnapshot_;
 };
 
 } // namespace agent
