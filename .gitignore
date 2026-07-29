@@ -229,6 +229,7 @@ agent/*.a
 agent/*.lib
 agent/*.dll
 agent/*.pdb
+.ninja_*
 
 # Streamlit
 .streamlit/secrets.toml
