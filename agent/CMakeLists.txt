@@ -85,6 +85,14 @@ target_link_libraries(http_server_concurrency_tests PRIVATE agent_core)
 
 target_include_directories(http_server_concurrency_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
+add_executable(http_server_integration_tests
+    tests/http_server_integration_tests.cpp
+)
+
+target_link_libraries(http_server_integration_tests PRIVATE agent_core)
+
+target_include_directories(http_server_integration_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
 add_executable(http_request_parse_tests
     tests/http_request_parse_tests.cpp
 )
