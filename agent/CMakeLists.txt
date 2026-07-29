@@ -30,3 +30,11 @@ add_executable(agent
 target_link_libraries(agent PRIVATE agent_core)
 
 target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+add_executable(agent_tests
+    tests/scheduler_lifecycle_tests.cpp
+)
+
+target_link_libraries(agent_tests PRIVATE agent_core)
+
+target_include_directories(agent_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)

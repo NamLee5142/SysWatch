@@ -1,6 +1,7 @@
 #include "agent/Agent.h"
 #include "scheduler/Scheduler.h"
 #include <chrono>
+#include <iostream>
 
 namespace agent {
 
@@ -29,9 +30,18 @@ void Agent::stop() {
     scheduler_.reset();
 }
 
+#include <iostream>
+
 void Agent::collectCycle() {
     auto snapshot = collector_.collect();
     repository_.save(snapshot);
+
+    std::cout << "Snapshot: "
+              << "CPU=" << snapshot.cpuInfo.usagePercent << "% "
+              << "Memory=" << snapshot.memoryInfo.usedMB << "MB/" << snapshot.memoryInfo.totalMB << "MB "
+              << "Disk=" << snapshot.diskInfo.freeGB << "GB free/" << snapshot.diskInfo.totalGB << "GB "
+              << "System=" << snapshot.systemInfo.name << " " << snapshot.systemInfo.version
+              << std::endl;
 }
 
 } // namespace agent
