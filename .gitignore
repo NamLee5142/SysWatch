@@ -214,5 +214,16 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# CMake / C++ build output
+agent/build/
+agent/build_debug/
+agent/*.exe
+agent/*.o
+agent/*.obj
+agent/*.a
+agent/*.lib
+agent/*.dll
+agent/*.pdb
+
 # Streamlit
 .streamlit/secrets.toml
