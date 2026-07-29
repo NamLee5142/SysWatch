@@ -1,0 +1,13 @@
+# ninja log v7
+71	783	8070243127110033	CMakeFiles/agent_core.dir/src/repository/SnapshotRepository.cpp.obj	7758e226f299d98c
+76	1219	8070243127169941	CMakeFiles/agent_core.dir/src/scheduler/Scheduler.cpp.obj	72087b3536b70648
+114	1346	8070243127539980	CMakeFiles/http_request_parse_tests.dir/tests/http_request_parse_tests.cpp.obj	ec3cba88a999c308
+67	1398	8070243127063913	CMakeFiles/agent_core.dir/src/Agent.cpp.obj	1fd71facb6a9210
+86	1426	8070243127270596	CMakeFiles/agent_core.dir/src/http/HttpParser.cpp.obj	1724af6c4ab61415
+92	1562	8070243127336007	CMakeFiles/agent_core.dir/src/collector/CPUCollector.cpp.obj	cc3792cc59b298d8
+97	1581	8070243127385710	CMakeFiles/agent_core.dir/src/collector/MemoryCollector.cpp.obj	35ced9ae23e7c8cd
+103	1616	8070243127438365	CMakeFiles/agent_core.dir/src/collector/DiskCollector.cpp.obj	22e3102347e0f64b
+108	1986	8070243127489863	CMakeFiles/agent_core.dir/src/collector/OsCollector.cpp.obj	76ea8df00e0d624c
+81	2356	8070243127207275	CMakeFiles/agent_core.dir/src/http/HTTPServer.cpp.obj	60bdd9f03192bfef
+2356	2484	8070243149964255	libagent_core.a	752b7c9e2ffdfc9f
+2484	2602	8070243151247699	http_request_parse_tests.exe	ebeaca993bb6896a
