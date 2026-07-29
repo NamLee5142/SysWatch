@@ -1,7 +1,6 @@
 #include "http/HTTPServer.h"
 #include <chrono>
 #include <cstring>
-#include <system_error>
 
 namespace http {
 
@@ -72,19 +71,15 @@ void HTTPServer::start() {
         return;
     }
 
-    serverThread_ = std::thread([this]() {
-        while (running_.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-    });
+    serverThread_ = std::thread(&HTTPServer::acceptLoop, this);
 }
 
 void HTTPServer::stop() {
     if (!running_.exchange(false)) return;
 
-    if (serverThread_.joinable()) serverThread_.join();
-
     cleanupSocket();
+
+    if (serverThread_.joinable()) serverThread_.join();
 }
 
 void HTTPServer::cleanupSocket() {
@@ -109,6 +104,24 @@ void HTTPServer::cleanupSocket() {
         winsockStarted_ = false;
     }
 #endif
+}
+
+void HTTPServer::acceptLoop() {
+    while (running_.load()) {
+        SocketHandle clientSocket = accept(listenSocket_, nullptr, nullptr);
+        if (clientSocket == -1 || clientSocket == INVALID_SOCKET) {
+            if (!running_.load()) {
+                break;
+            }
+            continue;
+        }
+
+#if defined(_WIN32)
+        closesocket(clientSocket);
+#else
+        close(clientSocket);
+#endif
+    }
 }
 
 } // namespace http

@@ -37,6 +37,7 @@ private:
     static constexpr unsigned short DefaultPort = 8080;
 
     void cleanupSocket();
+    void acceptLoop();
 };
 
 } // namespace http
