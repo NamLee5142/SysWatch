@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex>
 #include <optional>
 #include "domain/Snapshot.h"
 
@@ -14,6 +15,7 @@ public:
     std::optional<Snapshot> latest() const noexcept;
 
 private:
+    mutable std::mutex mutex_;
     std::optional<Snapshot> latestSnapshot_;
 };
 
