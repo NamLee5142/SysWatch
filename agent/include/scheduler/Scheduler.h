@@ -1,7 +1,11 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <functional>
+#include <mutex>
+#include <thread>
 
 namespace agent {
 
@@ -19,9 +23,14 @@ public:
     void stop();
 
 private:
+    void run();
+
     std::chrono::milliseconds interval_;
     Task task_;
     std::atomic_bool running_{false};
+    std::thread worker_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
 };
 
 } // namespace agent

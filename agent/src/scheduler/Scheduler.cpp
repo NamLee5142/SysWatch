@@ -38,7 +38,12 @@ void Scheduler::run() {
     auto nextWake = std::chrono::steady_clock::now();
 
     while (running_) {
-        task_();
+        try {
+            task_();
+        } catch (...) {
+            // Swallow exceptions to keep the worker thread alive.
+            // Scheduler should not terminate the process if a scheduled task throws.
+        }
 
         nextWake += interval_;
         std::unique_lock<std::mutex> lock(mutex_);
