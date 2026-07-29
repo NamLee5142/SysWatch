@@ -1,4 +1,4 @@
-#include "OsCollector.h"
+#include "collector/OsCollector.h"
 #ifdef _WIN32
 #include <windows.h>
 #endif

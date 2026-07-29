@@ -1,6 +1,6 @@
 #pragma once
 
-#include "DiskInfo.h"
+#include "domain/DiskInfo.h"
 
 class DiskCollector {
 public:

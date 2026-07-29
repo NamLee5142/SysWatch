@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MemoryInfo.h"
+#include "domain/MemoryInfo.h"
 
 class MemoryCollector {
 public:

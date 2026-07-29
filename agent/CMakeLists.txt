@@ -5,14 +5,36 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include_directories(${CMAKE_SOURCE_DIR}/include)
+add_library(agent_core STATIC
+    src/Agent.cpp
+    src/repository/SnapshotRepository.cpp
+    src/scheduler/Scheduler.cpp
+    src/collector/CPUCollector.cpp
+    src/collector/MemoryCollector.cpp
+    src/collector/DiskCollector.cpp
+    src/collector/OsCollector.cpp
+)
+
+target_include_directories(agent_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
+
+target_compile_features(agent_core PUBLIC cxx_std_17)
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(agent_core PRIVATE "-static-libgcc" "-static-libstdc++")
+endif()
 
 add_executable(agent
     src/main.cpp
-    src/CPUCollector.cpp
-    src/MemoryCollector.cpp
-    src/DiskCollector.cpp
-    src/OsCollector.cpp
 )
 
+target_link_libraries(agent PRIVATE agent_core)
+
 target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+add_executable(agent_tests
+    tests/scheduler_lifecycle_tests.cpp
+)
+
+target_link_libraries(agent_tests PRIVATE agent_core)
+
+target_include_directories(agent_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)

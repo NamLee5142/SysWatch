@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Snapshot.h"
+#include "domain/Snapshot.h"
 #include "CPUCollector.h"
 #include "MemoryCollector.h"
 #include "DiskCollector.h"
