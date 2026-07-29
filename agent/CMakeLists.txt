@@ -24,6 +24,10 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_options(agent_core PRIVATE "-static-libgcc" "-static-libstdc++")
 endif()
 
+if (WIN32)
+    target_link_libraries(agent_core PRIVATE ws2_32)
+endif()
+
 add_executable(agent
     src/main.cpp
 )
