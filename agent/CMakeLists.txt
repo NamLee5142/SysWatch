@@ -69,6 +69,14 @@ target_link_libraries(http_server_routing_tests PRIVATE agent_core)
 
 target_include_directories(http_server_routing_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
+add_executable(http_server_snapshot_tests
+    tests/http_server_snapshot_tests.cpp
+)
+
+target_link_libraries(http_server_snapshot_tests PRIVATE agent_core)
+
+target_include_directories(http_server_snapshot_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
 add_executable(http_request_parse_tests
     tests/http_request_parse_tests.cpp
 )

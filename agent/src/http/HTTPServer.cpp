@@ -3,12 +3,87 @@
 #include "http/HttpResponse.h"
 #include <chrono>
 #include <cstring>
+#include <iomanip>
 #include <sstream>
+#include <string>
 #include <vector>
 
 namespace http {
 
 namespace {
+
+std::string quoteJsonString(const std::string &value) {
+    std::ostringstream out;
+    out << '"';
+    for (char c : value) {
+        switch (c) {
+            case '"': out << "\\\""; break;
+            case '\\': out << "\\\\"; break;
+            case '\b': out << "\\b"; break;
+            case '\f': out << "\\f"; break;
+            case '\n': out << "\\n"; break;
+            case '\r': out << "\\r"; break;
+            case '\t': out << "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    out << "\\u" << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << (int)c;
+                } else {
+                    out << c;
+                }
+                break;
+        }
+    }
+    out << '"';
+    return out.str();
+}
+
+std::string jsonFor(const CPUInfo &cpu) {
+    std::ostringstream out;
+    out << "{"
+        << "\"coreCount\":" << cpu.coreCount << ","
+        << "\"usagePercent\":" << cpu.usagePercent
+        << "}";
+    return out.str();
+}
+
+std::string jsonFor(const MemoryInfo &memory) {
+    std::ostringstream out;
+    out << "{"
+        << "\"totalMB\":" << memory.totalMB << ","
+        << "\"usedMB\":" << memory.usedMB
+        << "}";
+    return out.str();
+}
+
+std::string jsonFor(const DiskInfo &disk) {
+    std::ostringstream out;
+    out << "{"
+        << "\"totalGB\":" << disk.totalGB << ","
+        << "\"freeGB\":" << disk.freeGB
+        << "}";
+    return out.str();
+}
+
+std::string jsonFor(const SystemInfo &system) {
+    std::ostringstream out;
+    out << "{"
+        << "\"name\":" << quoteJsonString(system.name) << ","
+        << "\"version\":" << quoteJsonString(system.version) << ","
+        << "\"hostName\":" << quoteJsonString(system.hostName)
+        << "}";
+    return out.str();
+}
+
+std::string snapshotToJson(const Snapshot &snapshot) {
+    std::ostringstream out;
+    out << "{"
+        << "\"cpuInfo\":" << jsonFor(snapshot.cpuInfo) << ","
+        << "\"memoryInfo\":" << jsonFor(snapshot.memoryInfo) << ","
+        << "\"diskInfo\":" << jsonFor(snapshot.diskInfo) << ","
+        << "\"systemInfo\":" << jsonFor(snapshot.systemInfo)
+        << "}";
+    return out.str();
+}
 
 std::string buildHttpResponseString(const HttpResponse &response) {
     std::ostringstream out;
@@ -63,8 +138,8 @@ HttpResponse routeRequest(const HttpRequest &request, const agent::Agent &agent)
         auto snapshot = agent.latestSnapshot();
         if (snapshot) {
             response.status = 200;
-            response.headers["Content-Type"] = "text/plain";
-            response.body = "";
+            response.headers["Content-Type"] = "application/json";
+            response.body = snapshotToJson(*snapshot);
         } else {
             response.status = 204;
             response.headers["Content-Type"] = "text/plain";
