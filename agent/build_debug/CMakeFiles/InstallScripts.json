@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"C:/SysWatch/agent/build_debug/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
