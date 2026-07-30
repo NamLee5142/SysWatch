@@ -38,4 +38,8 @@ void Agent::collectCycle() {
     }
 }
 
+std::optional<Snapshot> Agent::latestSnapshot() const {
+    return repository_.latest();
+}
+
 } // namespace agent
