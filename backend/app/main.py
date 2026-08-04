@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from app.api import health
 import logging
-from app import logging as app_logging
+from app import logging_config as app_logging
 
 app = FastAPI(title="SysWatch Backend")
 
