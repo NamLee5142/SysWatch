@@ -1,11 +1,12 @@
 from fastapi import FastAPI
-from app.api import health
+from app.api import health, snapshot
 import logging
 from app import logging_config as app_logging
 
 app = FastAPI(title="SysWatch Backend")
 
 app.include_router(health.router)
+app.include_router(snapshot.router)
 
 
 @app.on_event("startup")
