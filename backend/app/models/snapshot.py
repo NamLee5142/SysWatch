@@ -1,27 +1,25 @@
-from typing import Optional
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class CPUInfo(BaseModel):
-    coreCount: int = Field(..., alias="coreCount")
-    usagePercent: float = Field(..., alias="usagePercent")
+    coreCount: int
+    usagePercent: float
 
 
 class MemoryInfo(BaseModel):
-    totalMB: int = Field(..., alias="totalMB")
-    usedMB: int = Field(..., alias="usedMB")
+    totalMB: int
+    usedMB: int
 
 
 class DiskInfo(BaseModel):
-    totalGB: int = Field(..., alias="totalGB")
-    freeGB: int = Field(..., alias="freeGB")
+    totalGB: int
+    freeGB: int
 
 
 class SystemInfo(BaseModel):
-    name: str = Field(..., alias="name")
-    version: str = Field(..., alias="version")
-    hostName: str = Field(..., alias="hostName")
+    name: str
+    version: str
+    hostName: str
 
 
 class Snapshot(BaseModel):
@@ -33,7 +31,3 @@ class Snapshot(BaseModel):
     @classmethod
     def from_payload(cls, payload: dict) -> "Snapshot":
         return cls(**payload)
-
-
-class SnapshotEnvelope(BaseModel):
-    snapshot: Optional[Snapshot] = None
