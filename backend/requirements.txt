@@ -3,3 +3,4 @@ uvicorn[standard]==0.23.1
 httpx==0.24.0
 pydantic==1.10.12
 pytest==7.4.0
+respx==0.23.0
