@@ -1,7 +1,6 @@
-from typing import Optional
-
 import httpx
-from .errors import AgentConnectionError, AgentResponseError
+
+from .errors import AgentConnectionError
 
 
 class AgentClient:
@@ -17,13 +16,3 @@ class AgentClient:
                 return response
         except httpx.RequestError as exc:
             raise AgentConnectionError(str(exc)) from exc
-
-    def get_snapshot_optional(self) -> Optional[httpx.Response]:
-        response = self.get_snapshot()
-        if response.status_code == 204:
-            return None
-        if response.status_code != 200:
-            raise AgentResponseError(
-                f"Unexpected status code {response.status_code}: {response.text}"
-            )
-        return response

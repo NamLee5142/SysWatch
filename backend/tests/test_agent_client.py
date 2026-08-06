@@ -1,9 +1,8 @@
 import pytest
 import respx
-from httpx import Response
 
 from app.client import AgentClient
-from app.client.errors import AgentConnectionError, AgentResponseError
+from app.client.errors import AgentConnectionError
 
 
 BASE_URL = "http://127.0.0.1:8080"
@@ -20,23 +19,14 @@ def test_get_snapshot_success():
     assert response.json() == {"status": "ok"}
 
 
-def test_get_snapshot_optional_204():
+def test_get_snapshot_204():
     client = AgentClient(BASE_URL)
 
     with respx.mock as mock:
         mock.get(f"{BASE_URL}/snapshot").respond(204)
-        response = client.get_snapshot_optional()
+        response = client.get_snapshot()
 
-    assert response is None
-
-
-def test_get_snapshot_optional_non_200():
-    client = AgentClient(BASE_URL)
-
-    with respx.mock as mock:
-        mock.get(f"{BASE_URL}/snapshot").respond(500, text="error")
-        with pytest.raises(AgentResponseError):
-            client.get_snapshot_optional()
+    assert response.status_code == 204
 
 
 def test_get_snapshot_connection_error():
