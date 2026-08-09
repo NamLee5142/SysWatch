@@ -5,15 +5,20 @@ from app.client import AgentClient
 from app.client.errors import AgentConnectionError
 from app.models.snapshot import Snapshot
 from app.services.snapshot_service import SnapshotService
-from config import settings
+from config import get_settings
 
 router = APIRouter()
 
 
+def create_snapshot_service() -> SnapshotService:
+    settings = get_settings()
+    client = AgentClient(settings.agent_base_url)
+    return SnapshotService(client=client)
+
+
 @router.get("/snapshot", response_model=Snapshot)
 async def get_snapshot():
-    client = AgentClient(settings.agent_base_url)
-    service = SnapshotService(client=client)
+    service = create_snapshot_service()
     try:
         return service.get_snapshot()
     except LookupError as exc:
