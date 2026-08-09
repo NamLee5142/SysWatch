@@ -11,7 +11,9 @@ class SnapshotService:
 
     def get_snapshot(self) -> Snapshot:
         response = self.client.get_snapshot()
+        return self._parse_response(response)
 
+    def _parse_response(self, response) -> Snapshot:
         if response.status_code == 204:
             raise LookupError("No snapshot available yet")
 
