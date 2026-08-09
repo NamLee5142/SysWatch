@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.snapshot_service import SnapshotService
 
 
@@ -22,3 +24,17 @@ def test_snapshot_service_parses_model():
 
     assert snapshot.cpuInfo.coreCount == 4
     assert snapshot.systemInfo.hostName == "server"
+
+
+def test_snapshot_service_raises_for_missing_snapshot():
+    class FakeResponse:
+        status_code = 204
+
+    class FakeClient:
+        def get_snapshot(self):
+            return FakeResponse()
+
+    service = SnapshotService(client=FakeClient())
+
+    with pytest.raises(LookupError, match="No snapshot available yet"):
+        service.get_snapshot()
