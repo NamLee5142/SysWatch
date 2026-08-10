@@ -16,8 +16,10 @@ def create_snapshot_service() -> SnapshotService:
     return SnapshotService(client=client)
 
 
+# sync def so FastAPI runs the blocking AgentClient call in a threadpool
+# instead of stalling the event loop
 @router.get("/snapshot", response_model=Snapshot)
-async def get_snapshot():
+def get_snapshot():
     service = create_snapshot_service()
     try:
         return service.get_snapshot()
