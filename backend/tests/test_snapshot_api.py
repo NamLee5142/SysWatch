@@ -1,9 +1,10 @@
 from fastapi.testclient import TestClient
 
 from app.client.errors import AgentConnectionError
-from app.main import app
+from app.main import create_app
 from app.models.snapshot import Snapshot
 
+app = create_app()
 client = TestClient(app)
 
 
