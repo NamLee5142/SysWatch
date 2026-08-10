@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -6,10 +6,9 @@ class Settings(BaseSettings):
     port: int = 8000
     agent_base_url: str = "http://127.0.0.1:8080"
 
-    model_config = SettingsConfigDict(
-        env_prefix="SYSWATCH_",
-        case_sensitive=False,
-    )
+    class Config:
+        env_prefix = "SYSWATCH_"
+        case_sensitive = False
 
 
 def get_settings() -> Settings:
