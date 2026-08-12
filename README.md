@@ -54,14 +54,16 @@ SysWatch/
         include/
         src/
         tests/
-    server/
+    backend/                   # Python backend (FastAPI)
         app/
+            api/               # FastAPI routes
+            client/            # HTTP client for the C++ agent
+            models/            # Pydantic snapshot models
+            services/          # Service layer
         tests/
-    scripts/
-    docs/                      # Documentation
     LICENSE
     README.md
-    .gitinore
+    .gitignore
 ```
 
 # Development Roadmap
