@@ -44,6 +44,41 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 Note that `--host`/`--port` flags override the `SYSWATCH_*` variables, since
 uvicorn is being configured directly rather than through `run.py`.
 
+## Running against the real agent
+
+Build the agent, then start it while the backend is running:
+
+```bash
+cd agent
+cmake --build build
+PATH="/c/mingw64/bin:$PATH" ./build/agent.exe    # Git Bash
+```
+
+Two things to know:
+
+- **The MinGW runtime must come from the compiling toolchain.** `agent.exe`
+  links `libstdc++-6.dll`, `libgcc_s_seh-1.dll` and `libwinpthread-1.dll`
+  dynamically. Git Bash ships its own older copies in `/mingw64/bin` that
+  shadow the real ones, and the process then fails to start with exit 127 and
+  no message. Putting the compiler's `bin` first fixes it. (The
+  `-static-libgcc`/`-static-libstdc++` options in `agent/CMakeLists.txt` are
+  attached to the `agent_core` static library, which has no link step, so they
+  have no effect on the executable.)
+- **The agent exits after ~5 seconds.** `agent/src/main.cpp` sleeps for 5
+  seconds and then shuts down, so it is a demo entrypoint rather than a
+  service. Expect `/snapshot` to start returning 503 once it stops.
+
+Observed behaviour end to end:
+
+| Agent state | `GET /snapshot` |
+| --- | --- |
+| Not started | `503` |
+| Running, snapshot collected | `200` with live data |
+| Stopped again | `503` |
+
+Note that `cpuInfo.usagePercent` is currently always `0.0` — it is a
+placeholder in the agent's `CPUCollector`, not a measurement.
+
 ## Configuration
 
 All settings are read from the environment with the `SYSWATCH_` prefix. Names
