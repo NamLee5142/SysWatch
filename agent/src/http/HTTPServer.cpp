@@ -3,6 +3,7 @@
 #include "http/HttpResponse.h"
 #include <chrono>
 #include <cstring>
+#include <ctime>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -34,6 +35,22 @@ std::string quoteJsonString(const std::string &value) {
         }
     }
     out << '"';
+    return out.str();
+}
+
+// Renders a time point as ISO-8601 in UTC, e.g. 2026-08-12T11:15:27Z.
+std::string formatIso8601Utc(std::chrono::system_clock::time_point when) {
+    const std::time_t seconds = std::chrono::system_clock::to_time_t(when);
+
+    std::tm utc{};
+#if defined(_WIN32)
+    gmtime_s(&utc, &seconds);
+#else
+    gmtime_r(&seconds, &utc);
+#endif
+
+    std::ostringstream out;
+    out << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
     return out.str();
 }
 
@@ -77,6 +94,7 @@ std::string jsonFor(const SystemInfo &system) {
 std::string snapshotToJson(const Snapshot &snapshot) {
     std::ostringstream out;
     out << "{"
+        << "\"collectedAt\":" << quoteJsonString(formatIso8601Utc(snapshot.collectedAt)) << ","
         << "\"cpuInfo\":" << jsonFor(snapshot.cpuInfo) << ","
         << "\"memoryInfo\":" << jsonFor(snapshot.memoryInfo) << ","
         << "\"diskInfo\":" << jsonFor(snapshot.diskInfo) << ","
