@@ -64,9 +64,11 @@ Two things to know:
   `-static-libgcc`/`-static-libstdc++` options in `agent/CMakeLists.txt` are
   attached to the `agent_core` static library, which has no link step, so they
   have no effect on the executable.)
-- **The agent exits after ~5 seconds.** `agent/src/main.cpp` sleeps for 5
-  seconds and then shuts down, so it is a demo entrypoint rather than a
-  service. Expect `/snapshot` to start returning 503 once it stops.
+- **The agent runs until interrupted.** It collects every 2 seconds and serves
+  `/snapshot` until it receives `SIGINT` (Ctrl+C) or `SIGTERM`, then stops the
+  collector and the HTTP server before exiting. It previously shut itself down
+  after 5 seconds, which made it a demo entrypoint rather than something the
+  backend could poll.
 
 Observed behaviour end to end:
 
@@ -74,7 +76,7 @@ Observed behaviour end to end:
 | --- | --- |
 | Not started | `503` |
 | Running, snapshot collected | `200` with live data |
-| Stopped again | `503` |
+| Stopped with Ctrl+C | `503` |
 
 Note that `cpuInfo.usagePercent` is currently always `0.0` — it is a
 placeholder in the agent's `CPUCollector`, not a measurement.
