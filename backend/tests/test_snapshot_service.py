@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from app.services.snapshot_service import SnapshotService
 
 VALID_PAYLOAD = {
+    "collectedAt": "2026-08-12T11:15:27Z",
     "cpuInfo": {"coreCount": 4, "usagePercent": 12.3},
     "memoryInfo": {"totalMB": 8192, "usedMB": 2048},
     "diskInfo": {"totalGB": 256, "freeGB": 64},

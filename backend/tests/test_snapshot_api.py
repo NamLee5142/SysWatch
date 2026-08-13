@@ -10,6 +10,7 @@ app = create_app()
 client = TestClient(app)
 
 VALID_PAYLOAD = {
+    "collectedAt": "2026-08-12T11:15:27Z",
     "cpuInfo": {"coreCount": 8, "usagePercent": 42.5},
     "memoryInfo": {"totalMB": 16384, "usedMB": 4096},
     "diskInfo": {"totalGB": 512, "freeGB": 120},

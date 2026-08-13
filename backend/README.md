@@ -122,6 +122,7 @@ Fetches the latest snapshot from the agent and returns it as a typed model.
 
 ```json
 {
+  "collectedAt": "2026-08-12T11:15:27Z",
   "cpuInfo": {"coreCount": 8, "usagePercent": 42.5},
   "memoryInfo": {"totalMB": 16384, "usedMB": 4096},
   "diskInfo": {"totalGB": 512, "freeGB": 120},
@@ -131,6 +132,7 @@ Fetches the latest snapshot from the agent and returns it as a typed model.
 
 | Field | Type | Notes |
 | --- | --- | --- |
+| `collectedAt` | datetime | ISO-8601 UTC, stamped by the agent at collection time |
 | `cpuInfo.coreCount` | int | Logical cores |
 | `cpuInfo.usagePercent` | float | 0–100 |
 | `memoryInfo.totalMB` / `usedMB` | int | Megabytes |

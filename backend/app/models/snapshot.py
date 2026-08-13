@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -23,6 +25,9 @@ class SystemInfo(BaseModel):
 
 
 class Snapshot(BaseModel):
+    # Stamped by the agent when the metrics were collected, not when the backend
+    # fetched them. Serialized as ISO-8601 UTC, e.g. 2026-08-12T11:15:27Z.
+    collectedAt: datetime
     cpuInfo: CPUInfo
     memoryInfo: MemoryInfo
     diskInfo: DiskInfo
