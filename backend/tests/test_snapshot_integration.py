@@ -5,14 +5,34 @@ real implementation, unlike the unit tests which replace SnapshotService
 with a fake and so never exercise the wiring between them.
 """
 import httpx
+import pytest
 import respx
 from fastapi.testclient import TestClient
 
+from app.db import session as db_session
+from app.db.models import Base
 from app.main import create_app
+from app.repositories import SnapshotStore
 from config import get_settings
 
 app = create_app()
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def temp_database():
+    """Point the whole stack at a throwaway database.
+
+    /snapshot now writes what it fetches, so without this the suite would
+    persist into the real syswatch.db.
+    """
+    db_session.dispose_engine()
+    engine = db_session.init_engine("sqlite://")
+    Base.metadata.create_all(engine)
+
+    yield
+
+    db_session.dispose_engine()
 
 AGENT_SNAPSHOT_URL = f"{get_settings().agent_base_url}/snapshot"
 
@@ -34,6 +54,30 @@ def test_agent_snapshot_reaches_the_client_unchanged():
     assert route.called
     assert response.status_code == 200
     assert response.json() == AGENT_PAYLOAD
+
+
+@respx.mock
+def test_fetched_snapshot_is_persisted():
+    respx.get(AGENT_SNAPSHOT_URL).respond(200, json=AGENT_PAYLOAD)
+
+    assert client.get("/snapshot").status_code == 200
+
+    stored = SnapshotStore().latest()
+    assert stored is not None
+    assert stored.host_name == "devbox"
+    assert stored.cpu_core_count == 8
+    assert stored.collected_at.isoformat() == "2026-08-12T11:15:27+00:00"
+
+
+@respx.mock
+def test_repeated_fetches_do_not_duplicate_a_snapshot():
+    respx.get(AGENT_SNAPSHOT_URL).respond(200, json=AGENT_PAYLOAD)
+
+    client.get("/snapshot")
+    client.get("/snapshot")
+
+    # Same collection time, so the unique constraint collapses the second write.
+    assert len(SnapshotStore().query()) == 1
 
 
 @respx.mock

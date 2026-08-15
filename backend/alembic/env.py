@@ -15,7 +15,10 @@ config = context.config
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers defaults to True, which would silence every
+    # logger the application has already configured. Running a migration must
+    # not turn off the app's logging.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # The database URL lives in settings, not alembic.ini, so migrations and the
 # application can never point at different databases.
