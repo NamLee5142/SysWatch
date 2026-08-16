@@ -163,6 +163,35 @@ def test_query_pages_with_limit_and_offset(store):
     assert second[0].collected_at == BASE_TIME + timedelta(minutes=2)
 
 
+def test_count_ignores_paging(store):
+    for minutes in range(5):
+        store.save(make_snapshot(collected_at=BASE_TIME + timedelta(minutes=minutes)))
+
+    assert len(store.query(limit=2)) == 2
+    assert store.count() == 5
+
+
+def test_count_applies_the_same_filters_as_query(store):
+    save_times = (0, 10, 20)
+    for minutes in save_times:
+        store.save(make_snapshot(host_name="devbox", collected_at=BASE_TIME + timedelta(minutes=minutes)))
+    store.save(make_snapshot(host_name="buildbox", collected_at=BASE_TIME))
+
+    window = {
+        "since": BASE_TIME + timedelta(minutes=10),
+        "until": BASE_TIME + timedelta(minutes=20),
+    }
+
+    assert store.count(host_name="devbox") == 3
+    assert store.count(host_name="buildbox") == 1
+    assert store.count(**window) == 2
+    assert store.count(host_name="devbox", **window) == len(store.query(host_name="devbox", **window))
+
+
+def test_count_is_zero_when_empty(store):
+    assert store.count() == 0
+
+
 def test_query_is_empty_when_nothing_matches(store):
     store.save(make_snapshot())
 

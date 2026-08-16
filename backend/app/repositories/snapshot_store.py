@@ -1,6 +1,6 @@
 from datetime import timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db import get_session
@@ -67,8 +67,29 @@ class SnapshotStore:
 
     def query(self, host_name=None, since=None, until=None, limit=DEFAULT_LIMIT, offset=0):
         """Snapshots newest first, filtered by host and collection time."""
-        statement = select(SnapshotRecord)
+        statement = self._filtered(select(SnapshotRecord), host_name, since, until)
+        statement = self._ordered(statement).limit(limit).offset(offset)
 
+        with get_session() as session:
+            records = session.execute(statement).scalars().all()
+
+        return [self._hydrate(record) for record in records]
+
+    def count(self, host_name=None, since=None, until=None):
+        """How many snapshots match, ignoring paging."""
+        statement = self._filtered(
+            select(func.count()).select_from(SnapshotRecord),
+            host_name,
+            since,
+            until,
+        )
+
+        with get_session() as session:
+            return session.execute(statement).scalar_one()
+
+    def _filtered(self, statement, host_name, since, until):
+        # Shared by query() and count() so a page and its total can never be
+        # computed from different filters.
         if host_name is not None:
             statement = statement.where(SnapshotRecord.host_name == host_name)
         if since is not None:
@@ -76,12 +97,7 @@ class SnapshotStore:
         if until is not None:
             statement = statement.where(SnapshotRecord.collected_at <= to_storage_time(until))
 
-        statement = self._ordered(statement).limit(limit).offset(offset)
-
-        with get_session() as session:
-            records = session.execute(statement).scalars().all()
-
-        return [self._hydrate(record) for record in records]
+        return statement
 
     def _ordered(self, statement):
         # id breaks ties so paging stays stable if two snapshots share a time.
