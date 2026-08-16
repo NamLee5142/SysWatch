@@ -167,3 +167,69 @@ def test_invalid_paging_and_time_values_are_rejected(store, params):
 def test_limit_is_capped_at_the_documented_maximum(store):
     assert client.get("/snapshots", params={"limit": 1000}).status_code == 200
     assert client.get("/snapshots", params={"limit": 1001}).status_code == 422
+
+
+def test_latest_returns_the_newest_stored_snapshot(store):
+    save(store, collected_at=BASE_TIME, cpu_usage=1.0)
+    save(store, collected_at=BASE_TIME + timedelta(minutes=5), cpu_usage=99.0)
+    save(store, collected_at=BASE_TIME - timedelta(minutes=5), cpu_usage=50.0)
+
+    body = client.get("/snapshots/latest").json()
+
+    assert body["collectedAt"] == "2026-08-12T11:20:27Z"
+    assert body["cpuInfo"]["usagePercent"] == 99.0
+
+
+def test_latest_uses_the_same_shape_as_the_live_endpoint(store):
+    save(store)
+
+    body = client.get("/snapshots/latest").json()
+
+    assert set(body) == {"collectedAt", "cpuInfo", "memoryInfo", "diskInfo", "systemInfo"}
+    assert body["systemInfo"] == {"name": "Windows", "version": "11", "hostName": "devbox"}
+
+
+def test_latest_can_be_scoped_to_a_host(store):
+    save(store, host_name="devbox", collected_at=BASE_TIME)
+    save(store, host_name="buildbox", collected_at=BASE_TIME + timedelta(minutes=5))
+
+    body = client.get("/snapshots/latest", params={"host": "devbox"}).json()
+
+    assert body["systemInfo"]["hostName"] == "devbox"
+    assert body["collectedAt"] == "2026-08-12T11:15:27Z"
+
+
+def test_latest_is_404_when_nothing_is_stored(store):
+    response = client.get("/snapshots/latest")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No snapshot stored yet"
+
+
+def test_latest_is_404_for_an_unknown_host(store):
+    save(store, host_name="devbox")
+
+    assert client.get("/snapshots/latest", params={"host": "nowhere"}).status_code == 404
+
+
+def test_latest_does_not_contact_the_agent(store, monkeypatch):
+    save(store)
+
+    def explode(*args, **kwargs):
+        raise AssertionError("the history endpoints must not call the agent")
+
+    monkeypatch.setattr("app.client.agent_client.httpx.Client", explode)
+
+    # Serving from storage is what keeps this answering while the agent is down.
+    assert client.get("/snapshots/latest").status_code == 200
+    assert client.get("/snapshots").status_code == 200
+
+
+def test_latest_path_is_not_shadowed_by_the_list_route(store):
+    save(store)
+
+    # /snapshots/latest must resolve to its own handler, not be swallowed by
+    # /snapshots and return a page.
+    body = client.get("/snapshots/latest").json()
+
+    assert "items" not in body

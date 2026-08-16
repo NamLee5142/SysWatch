@@ -42,6 +42,27 @@ def list_snapshots(
     )
 
 
+# sync def so FastAPI runs the blocking database work in a threadpool
+# instead of stalling the event loop
+@router.get(
+    "/snapshots/latest",
+    response_model=Snapshot,
+    summary="Fetch the most recently stored snapshot",
+    responses={404: {"description": "Nothing stored yet"}},
+)
+def latest_snapshot(
+    host: Optional[str] = Query(None, description="Limit to one host name"),
+):
+    # Answered from storage, so this keeps working while the agent is down,
+    # unlike GET /snapshot which asks the agent directly.
+    record = create_snapshot_store().latest(host_name=host)
+
+    if record is None:
+        raise HTTPException(status_code=404, detail="No snapshot stored yet")
+
+    return Snapshot.from_record(record)
+
+
 def _validate_window(since, until):
     if since is None or until is None:
         return
