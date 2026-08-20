@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./syswatch.db"
     polling_enabled: bool = True
     poll_interval_seconds: float = 10.0
+    # Snapshots older than this are pruned. 0 keeps them forever.
+    retention_days: int = 30
 
     model_config = SettingsConfigDict(
         env_prefix="SYSWATCH_",

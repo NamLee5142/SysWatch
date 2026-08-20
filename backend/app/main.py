@@ -15,11 +15,15 @@ from config import get_settings
 
 def create_poller(settings):
     """Build the poller that collects snapshots whether or not anyone is asking."""
-    service = SnapshotService(
-        client=AgentClient(settings.agent_base_url),
-        store=SnapshotStore(),
+    store = SnapshotStore()
+    service = SnapshotService(client=AgentClient(settings.agent_base_url), store=store)
+
+    return SnapshotPoller(
+        service,
+        interval_seconds=settings.poll_interval_seconds,
+        store=store,
+        retention_days=settings.retention_days,
     )
-    return SnapshotPoller(service, interval_seconds=settings.poll_interval_seconds)
 
 
 @asynccontextmanager

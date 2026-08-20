@@ -1,6 +1,6 @@
 from datetime import timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db import get_session
@@ -86,6 +86,15 @@ class SnapshotStore:
 
         with get_session() as session:
             return session.execute(statement).scalar_one()
+
+    def prune(self, older_than):
+        """Delete snapshots collected before the cutoff. Returns rows removed."""
+        statement = delete(SnapshotRecord).where(
+            SnapshotRecord.collected_at < to_storage_time(older_than)
+        )
+
+        with get_session() as session:
+            return session.execute(statement).rowcount
 
     def _filtered(self, statement, host_name, since, until):
         # Shared by query() and count() so a page and its total can never be

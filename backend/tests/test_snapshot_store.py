@@ -192,6 +192,41 @@ def test_count_is_zero_when_empty(store):
     assert store.count() == 0
 
 
+def test_prune_removes_only_snapshots_before_the_cutoff(store):
+    for days in (10, 5, 1):
+        store.save(make_snapshot(collected_at=BASE_TIME - timedelta(days=days)))
+
+    removed = store.prune(BASE_TIME - timedelta(days=6))
+
+    assert removed == 1
+    remaining = [record.collected_at for record in store.query()]
+    assert remaining == [BASE_TIME - timedelta(days=1), BASE_TIME - timedelta(days=5)]
+
+
+def test_prune_is_exclusive_at_the_cutoff(store):
+    store.save(make_snapshot(collected_at=BASE_TIME))
+
+    # A snapshot exactly at the cutoff is inside the retention window.
+    assert store.prune(BASE_TIME) == 0
+    assert store.count() == 1
+
+
+def test_prune_returns_zero_when_nothing_is_old_enough(store):
+    store.save(make_snapshot(collected_at=BASE_TIME))
+
+    assert store.prune(BASE_TIME - timedelta(days=30)) == 0
+
+
+def test_prune_normalises_a_non_utc_cutoff(store):
+    store.save(make_snapshot(collected_at=BASE_TIME - timedelta(hours=2)))
+
+    # Same instant as BASE_TIME, expressed in UTC+7. Treating it as a naive
+    # local time would delete the wrong rows.
+    cutoff = BASE_TIME.astimezone(timezone(timedelta(hours=7)))
+
+    assert store.prune(cutoff) == 1
+
+
 def test_query_is_empty_when_nothing_matches(store):
     store.save(make_snapshot())
 
