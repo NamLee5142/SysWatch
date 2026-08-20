@@ -4,15 +4,20 @@ Only the agent's HTTP transport is stubbed. Every layer in between is the
 real implementation, unlike the unit tests which replace SnapshotService
 with a fake and so never exercise the wiring between them.
 """
+import asyncio
+
 import httpx
 import pytest
 import respx
 from fastapi.testclient import TestClient
 
+from app.client import AgentClient
 from app.db import session as db_session
 from app.db.models import Base
 from app.main import create_app
 from app.repositories import SnapshotStore
+from app.services.snapshot_poller import SnapshotPoller
+from app.services.snapshot_service import SnapshotService
 from config import get_settings
 
 app = create_app()
@@ -126,3 +131,74 @@ def test_unreachable_agent_becomes_503():
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Unable to reach agent"
+
+
+def run_poller_until(store, target_rows, timeout=3.0):
+    """Run a real poller against the stubbed agent until enough rows land."""
+
+    async def scenario():
+        service = SnapshotService(
+            client=AgentClient(get_settings().agent_base_url),
+            store=store,
+        )
+        poller = SnapshotPoller(service, interval_seconds=0.01)
+        poller.start()
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while store.count() < target_rows and loop.time() < deadline:
+            await asyncio.sleep(0.01)
+
+        await poller.stop()
+
+    asyncio.run(scenario())
+
+
+@respx.mock
+def test_poller_fills_storage_without_anyone_calling_the_api():
+    route = respx.get(AGENT_SNAPSHOT_URL).respond(200, json=AGENT_PAYLOAD)
+    store = SnapshotStore()
+
+    run_poller_until(store, target_rows=1)
+
+    # The whole point of the sprint: history accumulates because the backend
+    # collects, not because a client asked.
+    assert route.called
+    assert store.count() == 1
+
+
+@respx.mock
+def test_polling_the_same_collection_repeatedly_stores_one_row():
+    respx.get(AGENT_SNAPSHOT_URL).respond(200, json=AGENT_PAYLOAD)
+    store = SnapshotStore()
+
+    run_poller_until(store, target_rows=1)
+    run_poller_until(store, target_rows=2, timeout=0.3)
+
+    # The agent keeps returning the same collection, so the unique constraint
+    # collapses every repeat.
+    assert store.count() == 1
+
+
+@respx.mock
+def test_collected_snapshots_are_served_by_the_history_endpoints():
+    counter = {"n": 0}
+
+    def respond(request):
+        payload = dict(AGENT_PAYLOAD, collectedAt=f"2026-08-12T11:15:{27 + counter['n']:02d}Z")
+        counter["n"] += 1
+        return httpx.Response(200, json=payload)
+
+    respx.get(AGENT_SNAPSHOT_URL).mock(side_effect=respond)
+    store = SnapshotStore()
+
+    run_poller_until(store, target_rows=3)
+
+    page = client.get("/snapshots").json()
+    assert page["count"] >= 3
+    times = [item["collectedAt"] for item in page["items"]]
+    assert times == sorted(times, reverse=True)
+
+    latest = client.get("/snapshots/latest").json()
+    assert latest["collectedAt"] == times[0]
+    assert latest["systemInfo"]["hostName"] == "devbox"
