@@ -233,3 +233,9 @@ agent/*.pdb
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SysWatch snapshot database (SQLite). WAL mode writes the -wal and -shm
+# sidecars alongside the database file.
+syswatch.db
+syswatch.db-wal
+syswatch.db-shm

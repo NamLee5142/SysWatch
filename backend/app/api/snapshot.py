@@ -4,6 +4,7 @@ import httpx
 from app.client import AgentClient
 from app.client.errors import AgentConnectionError
 from app.models.snapshot import Snapshot
+from app.repositories import SnapshotStore
 from app.services.snapshot_service import SnapshotService
 from config import get_settings
 
@@ -13,7 +14,7 @@ router = APIRouter()
 def create_snapshot_service() -> SnapshotService:
     settings = get_settings()
     client = AgentClient(settings.agent_base_url)
-    return SnapshotService(client=client)
+    return SnapshotService(client=client, store=SnapshotStore())
 
 
 # sync def so FastAPI runs the blocking AgentClient call in a threadpool

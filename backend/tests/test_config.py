@@ -3,7 +3,15 @@ from pydantic import ValidationError
 
 from config import Settings, get_settings
 
-ENV_VARS = ("SYSWATCH_HOST", "SYSWATCH_PORT", "SYSWATCH_AGENT_BASE_URL")
+ENV_VARS = (
+    "SYSWATCH_HOST",
+    "SYSWATCH_PORT",
+    "SYSWATCH_AGENT_BASE_URL",
+    "SYSWATCH_DATABASE_URL",
+    "SYSWATCH_POLLING_ENABLED",
+    "SYSWATCH_POLL_INTERVAL_SECONDS",
+    "SYSWATCH_RETENTION_DAYS",
+)
 
 
 @pytest.fixture
@@ -72,3 +80,55 @@ def test_get_settings_reads_environment_at_call_time(clean_env):
     clean_env.setenv("SYSWATCH_PORT", "8123")
 
     assert get_settings().port == 8123
+
+
+def test_database_settings_use_documented_defaults(clean_env):
+    settings = Settings()
+
+    assert settings.database_url == "sqlite:///./syswatch.db"
+    assert settings.polling_enabled is True
+    assert settings.poll_interval_seconds == 10.0
+    assert settings.retention_days == 30
+
+
+def test_database_settings_read_prefixed_env_vars(clean_env):
+    clean_env.setenv("SYSWATCH_DATABASE_URL", "sqlite:///./other.db")
+    clean_env.setenv("SYSWATCH_POLL_INTERVAL_SECONDS", "2.5")
+    clean_env.setenv("SYSWATCH_RETENTION_DAYS", "7")
+
+    settings = Settings()
+
+    assert settings.database_url == "sqlite:///./other.db"
+    assert settings.poll_interval_seconds == 2.5
+    assert settings.retention_days == 7
+
+
+@pytest.mark.parametrize("value", ["false", "False", "0", "no"])
+def test_polling_can_be_disabled_by_env(clean_env, value):
+    clean_env.setenv("SYSWATCH_POLLING_ENABLED", value)
+
+    assert Settings().polling_enabled is False
+
+
+@pytest.mark.parametrize("value", ["true", "True", "1", "yes"])
+def test_polling_can_be_enabled_by_env(clean_env, value):
+    clean_env.setenv("SYSWATCH_POLLING_ENABLED", value)
+
+    assert Settings().polling_enabled is True
+
+
+@pytest.mark.parametrize(
+    "name, value",
+    [
+        ("SYSWATCH_POLL_INTERVAL_SECONDS", "often"),
+        ("SYSWATCH_RETENTION_DAYS", "forever"),
+        ("SYSWATCH_POLLING_ENABLED", "maybe"),
+    ],
+)
+def test_invalid_values_are_rejected_at_startup(clean_env, name, value):
+    clean_env.setenv(name, value)
+
+    # Failing loudly beats silently falling back to a default and collecting
+    # on the wrong schedule.
+    with pytest.raises(ValidationError):
+        Settings()

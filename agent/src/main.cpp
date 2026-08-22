@@ -1,9 +1,20 @@
 #include <chrono>
+#include <csignal>
 #include <iostream>
 #include <thread>
 #include "agent/Agent.h"
 #include "config/AgentConfig.h"
 #include "http/HTTPServer.h"
+
+namespace {
+
+volatile std::sig_atomic_t stopRequested = 0;
+
+extern "C" void handleStopSignal(int) {
+    stopRequested = 1;
+}
+
+} // namespace
 
 int main() {
     agent::AgentConfig config;
@@ -24,8 +35,19 @@ int main() {
     server.start();
     agent.start();
 
-    std::cout << "Agent started. Listening on 127.0.0.1:" << config.serverPort << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::signal(SIGINT, handleStopSignal);
+    std::signal(SIGTERM, handleStopSignal);
+
+    std::cout << "Agent started. Listening on 127.0.0.1:" << config.serverPort
+              << ". Press Ctrl+C to stop." << std::endl;
+
+    // Run until interrupted. The signal handler may only touch a sig_atomic_t,
+    // so poll the flag rather than waiting on a condition variable.
+    while (stopRequested == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    std::cout << "\nStopping agent." << std::endl;
 
     agent.stop();
     server.stop();

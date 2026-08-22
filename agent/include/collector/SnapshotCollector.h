@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "domain/Snapshot.h"
 #include "CPUCollector.h"
 #include "MemoryCollector.h"
@@ -12,6 +14,7 @@ public:
 
     Snapshot collect() const {
         Snapshot snapshot;
+        snapshot.collectedAt = std::chrono::system_clock::now();
         snapshot.cpuInfo = cpuCollector.collect();
         snapshot.memoryInfo = memoryCollector.collect();
         snapshot.diskInfo = diskCollector.collect();

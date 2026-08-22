@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from app.services.snapshot_service import SnapshotService
 
 VALID_PAYLOAD = {
+    "collectedAt": "2026-08-12T11:15:27Z",
     "cpuInfo": {"coreCount": 4, "usagePercent": 12.3},
     "memoryInfo": {"totalMB": 8192, "usedMB": 2048},
     "diskInfo": {"totalGB": 256, "freeGB": 64},
@@ -20,14 +21,28 @@ class FakeResponse:
         return self._payload
 
 
-def service_for(response) -> SnapshotService:
+class RecordingStore:
+    """Stand-in for SnapshotStore that records what it was asked to save."""
+
+    def __init__(self, error=None):
+        self.saved = []
+        self.error = error
+
+    def save(self, snapshot):
+        if self.error is not None:
+            raise self.error
+        self.saved.append(snapshot)
+        return snapshot
+
+
+def service_for(response, store=None) -> SnapshotService:
     """A SnapshotService whose agent client always returns the given response."""
 
     class FakeClient:
         def get_snapshot(self):
             return response
 
-    return SnapshotService(client=FakeClient())
+    return SnapshotService(client=FakeClient(), store=store)
 
 
 def test_snapshot_service_parses_model():
@@ -61,3 +76,59 @@ def test_snapshot_service_raises_for_malformed_payload():
 
     # the API maps ValueError to 502, so ValidationError must stay a subclass of it
     assert isinstance(exc_info.value, ValueError)
+
+
+def test_snapshot_is_persisted_when_a_store_is_configured():
+    store = RecordingStore()
+    service = service_for(FakeResponse(200, VALID_PAYLOAD), store=store)
+
+    snapshot = service.get_snapshot()
+
+    assert store.saved == [snapshot]
+
+
+def test_service_works_without_a_store():
+    service = service_for(FakeResponse(200, VALID_PAYLOAD))
+
+    assert service.get_snapshot().systemInfo.hostName == "server"
+
+
+def test_storage_failure_does_not_fail_the_request():
+    store = RecordingStore(error=RuntimeError("database is locked"))
+    service = service_for(FakeResponse(200, VALID_PAYLOAD), store=store)
+
+    # Reading the agent succeeded, so the caller gets their snapshot. A broken
+    # database must not turn a working /snapshot into an error.
+    snapshot = service.get_snapshot()
+
+    assert snapshot.cpuInfo.coreCount == 4
+
+
+def test_storage_failure_is_logged(caplog):
+    store = RecordingStore(error=RuntimeError("database is locked"))
+    service = service_for(FakeResponse(200, VALID_PAYLOAD), store=store)
+
+    with caplog.at_level("WARNING"):
+        service.get_snapshot()
+
+    assert "Could not persist snapshot" in caplog.text
+
+
+def test_nothing_is_stored_when_the_agent_has_no_snapshot():
+    store = RecordingStore()
+    service = service_for(FakeResponse(204), store=store)
+
+    with pytest.raises(LookupError):
+        service.get_snapshot()
+
+    assert store.saved == []
+
+
+def test_nothing_is_stored_for_a_malformed_payload():
+    store = RecordingStore()
+    service = service_for(FakeResponse(200, {"cpuInfo": {"coreCount": "many"}}), store=store)
+
+    with pytest.raises(ValidationError):
+        service.get_snapshot()
+
+    assert store.saved == []

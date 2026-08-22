@@ -55,12 +55,16 @@ SysWatch/
         src/
         tests/
     backend/                   # Python backend (FastAPI)
+        alembic/               # Database migrations
         app/
             api/               # FastAPI routes
             client/            # HTTP client for the C++ agent
+            db/                # Engine, session scope, ORM models
             models/            # Pydantic snapshot models
-            services/          # Service layer
+            repositories/      # Persistence boundary
+            services/          # Snapshot service and background poller
         tests/
+    docs/                      # Sprint plans and design notes
     LICENSE
     README.md
     .gitignore
@@ -84,13 +88,13 @@ SysWatch/
 
 ## Phase 2 - Backend
 
-- [ ] FastAPI backend
+- [x] FastAPI backend
 - [ ] Agent registration
-- [ ] Metric ingestion API
+- [x] Metric ingestion API
 - [ ] Authentication
-- [ ] Database integration
-- [ ] Logging
-- [ ] Configuration management
+- [x] Database integration
+- [x] Logging
+- [x] Configuration management
 
 ---
 

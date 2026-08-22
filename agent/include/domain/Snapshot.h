@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "CPUInfo.h"
 #include "MemoryInfo.h"
 #include "DiskInfo.h"
@@ -8,6 +10,10 @@
 class Snapshot {
 public:
     Snapshot() = default;
+
+    // When the metrics below were collected. Stamped by SnapshotCollector so the
+    // value travels with the snapshot rather than being inferred downstream.
+    std::chrono::system_clock::time_point collectedAt{};
 
     CPUInfo cpuInfo;
     MemoryInfo memoryInfo;
