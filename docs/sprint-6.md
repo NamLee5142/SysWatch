@@ -82,20 +82,33 @@ has no delta to work from. Return `0.0` for that one call only, and confirm
 cycle, or every reading will be that first call.
 *Done when:* `/snapshot` reports a value that moves under load.
 
-**2. `test: cover CPU usage sampling`**
-First call returns 0; a second call after a busy loop returns > 0 and <= 100.
+**2. `fix: ignore CPU samples taken over too short an interval`**
+Windows accounts CPU time in ~15.6ms scheduler ticks. Sampling faster than that
+divides by a near-zero delta, which is rounding noise rather than a reading — it
+can report 0% on a busy machine. Add a 100ms minimum interval to `CPUCollector`;
+below it the previous reading stands and the baseline is left alone, so the next
+accepted sample measures across the whole accumulated window.
+*Watch out:* the floor must stay well under `AgentConfig::collectionInterval`
+(1s default, 2s in `main.cpp`), and skipping must not freeze the value — a
+caller polling faster than the floor still gets a fresh reading every 100ms.
+*Done when:* a burst of rapid calls repeats the last real value exactly.
+
+**3. `test: cover CPU usage sampling`**
+First call returns 0; a call after a busy loop returns > 0 and <= 100; a burst
+inside the minimum interval repeats the last reading unchanged; a second
+collector instance starts from its own baseline.
 *Done when:* the value stays bounded even when the deltas are degenerate.
 
 ### Phase B — Backend: make it consumable by a browser
 
-**3. `feat: allow dashboard origins via CORS`**
+**4. `feat: allow dashboard origins via CORS`**
 `CORSMiddleware` in `create_app()`, origins from a new `SYSWATCH_CORS_ORIGINS`
 setting (default `http://localhost:5173`).
 *Watch out:* a list field behind `env_prefix="SYSWATCH_"` makes pydantic-settings
 expect JSON in the environment. Parse a comma-separated string explicitly, or
 the first person to set it in a shell gets a validation error at startup.
 
-**4. `feat: report agent connection status`**
+**5. `feat: report agent connection status`**
 `GET /status` → `{"backend": "ok", "agent": "up|down|unknown", "pollerRunning":
 bool, "lastCollectedAt": iso|null, "lastPollError": str|null}`.
 `agent` is derived: `up` when the last poll succeeded, `down` when it raised,
@@ -105,13 +118,13 @@ logs and swallows. Add `last_success_at` / `last_error` set there, and read the
 poller off `app.state.poller`, which `lifespan` already assigns.
 *Done when:* stopping the agent flips `agent` to `down` within one poll interval.
 
-**5. `feat: add GET /hosts`**
+**6. `feat: add GET /hosts`**
 `{"items": [{"hostName": ..., "lastCollectedAt": ..., "snapshotCount": ...}]}`,
 backed by a new `SnapshotStore.hosts()` doing a `group by host_name`. Feeds the
 host selector and keeps the dashboard from paging the whole table just to
 discover which hosts exist.
 
-**6. `feat: add GET /snapshots/series for charts`**
+**7. `feat: add GET /snapshots/series for charts`**
 Params `metric` (`cpu|memory|disk`), `host`, `since`, `until`, `bucket`
 (`raw|minute|hour|day`). Returns `{"metric": ..., "bucket": ..., "points":
 [{"t": iso, "value": float}]}`, averaged per bucket, **oldest first**.
@@ -121,23 +134,23 @@ Say so in the docstring — a silently reversed axis is a nasty bug.
 inside `SnapshotStore` so the eventual PostgreSQL move stays one file, per
 Sprint 5's reasoning.
 
-**7. `test: cover status, hosts and series endpoints`**
+**8. `test: cover status, hosts and series endpoints`**
 Series bucketing and ordering, empty-range behaviour, `/status` in all three
 agent states, CORS preflight returning the configured origin.
 
 ### Phase C — Dashboard scaffold
 
-**8. `chore: scaffold the dashboard with vite react-ts`**
+**9. `chore: scaffold the dashboard with vite react-ts`**
 `dashboard/` via `npm create vite@latest -- --template react-ts`, plus
 `react-router-dom`, `recharts`, `vitest`, `@testing-library/react`. Exact
 version pins, matching the `requirements.txt` discipline. Vite dev proxy:
 `/api` → `http://127.0.0.1:8000`.
 
-**9. `chore: ignore node_modules and dashboard build output`**
+**10. `chore: ignore node_modules and dashboard build output`**
 `.gitignore` covers Python's `dist/` and `syswatch.db` but has nothing for Node.
 Land this before the first `npm install` gets committed by accident.
 
-**10. `feat: add typed API client`**
+**11. `feat: add typed API client`**
 `src/api/types.ts` mirrors the Pydantic models exactly — `Snapshot`,
 `SnapshotPage`, `Series`, `Status`, `HostList` — keeping the backend's camelCase
 field names. `src/api/client.ts` wraps `fetch`, throws a typed `ApiError`
@@ -145,12 +158,12 @@ carrying the status code, and reads its base URL from `VITE_API_BASE_URL`.
 *Done when:* a 404 from `/snapshots/latest` is distinguishable from a network
 failure by the caller — the two need different UI.
 
-**11. `feat: add app shell and routing`**
+**12. `feat: add app shell and routing`**
 Sidebar nav (Overview, CPU, Memory, Disk, System, History), header with hostname
 and a connection dot, `<Outlet/>` content area. All six routes wired with
 placeholder bodies, so navigation is reviewable before any page has content.
 
-**12. `feat: add polling and request hooks`**
+**13. `feat: add polling and request hooks`**
 `useApi(fetcher)` returning `{data, error, loading, refetch}`, and
 `usePolling(fetcher, intervalMs)` layered on it.
 *Watch out:* three things a naive version gets wrong — abort in-flight requests
@@ -160,44 +173,44 @@ a backgrounded tab stops hammering the API.
 
 ### Phase D — Pages
 
-**13. `feat: add shared metric components`**
+**14. `feat: add shared metric components`**
 `StatCard`, `Gauge` (percentage ring), `MetricChart` (Recharts line with shared
 axis and tooltip formatting), `TimeRangePicker` (1h / 6h / 24h / 7d). Built once
 here rather than five times across the pages that follow.
 
-**14. `feat: add Overview page`**
+**15. `feat: add Overview page`**
 The sprint's real deliverable: CPU %, memory used/total, disk used/free,
 hostname, OS, last update time and connection status on one screen, with no
 scrolling on a laptop.
 *Last update* renders as relative age ("12s ago"), not a timestamp — a stale
 dashboard should be obvious at a glance.
 
-**15. `feat: add CPU page`**
+**16. `feat: add CPU page`**
 Gauge, core count, and a trend chart from `/snapshots/series?metric=cpu`.
 
-**16. `feat: add Memory page`**
+**17. `feat: add Memory page`**
 Used vs total MB, used %, trend chart. Format MB into GB above 1024.
 
-**17. `feat: add Disk page`**
+**18. `feat: add Disk page`**
 Used / free / total GB and a used-% trend. `usedGB` is derived; the agent sends
 only `totalGB` and `freeGB`.
 
-**18. `feat: add System page`**
+**19. `feat: add System page`**
 OS name and version, hostname, agent and backend status detail, host list from
 `/hosts`.
 
-**19. `feat: add History page`**
+**20. `feat: add History page`**
 Paged table over `/snapshots` with host and time-window filters, using `count`
 for pagination and mapping a 422 to an inline "since is after until" message
 rather than a generic error.
 
 ### Phase E — States, quality, docs
 
-**20. `feat: add loading states`**
+**21. `feat: add loading states`**
 Skeletons on first load only. Background refreshes must not flash — a dashboard
 that strobes every 5 seconds is unusable.
 
-**21. `feat: add error and empty states`**
+**22. `feat: add error and empty states`**
 Three distinct cases, because they need three different messages: backend
 unreachable (network error), no data yet (404 from `/snapshots/latest` — the
 normal state on a fresh database), and agent down (`/status` reports `down`, so
@@ -205,11 +218,11 @@ show the last known values behind a staleness banner rather than an error page).
 *Done when:* killing the agent leaves the dashboard readable, and killing the
 backend produces a clear message rather than a blank screen.
 
-**22. `test: cover the dashboard client, hooks and pages`**
+**23. `test: cover the dashboard client, hooks and pages`**
 Client error mapping, `usePolling` interval and cleanup, and Overview rendering
 loading / error / success from mocked responses.
 
-**23. `docs: document the dashboard`**
+**24. `docs: document the dashboard`**
 `dashboard/README.md` (setup, dev server, env vars, build); backend README gains
 `/status`, `/hosts`, `/snapshots/series` and `SYSWATCH_CORS_ORIGINS`; root
 README adds `dashboard/` to the repository structure and ticks Phase 3
