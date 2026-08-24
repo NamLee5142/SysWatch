@@ -34,11 +34,24 @@ int main() {
     assert(isValidPercent(underLoad.usagePercent));
     assert(underLoad.coreCount == baseline.coreCount);
 
-    // Sampling faster than the counter advances leaves a zero delta to divide
-    // by. That must not produce a NaN, an infinity, or an out-of-range reading.
-    for (int i = 0; i < 200; ++i) {
-        assert(isValidPercent(collector.collect().usagePercent));
+    // Sampling faster than the scheduler ticks has no interval worth measuring:
+    // the counters barely move, and dividing by that near-zero delta yields
+    // rounding noise rather than a reading. Every call inside the collector's
+    // minimum interval must repeat the last real value untouched.
+    int rapidCalls = 0;
+    auto rapidDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(50);
+    while (std::chrono::steady_clock::now() < rapidDeadline) {
+        assert(collector.collect().usagePercent == underLoad.usagePercent);
+        ++rapidCalls;
     }
+    assert(rapidCalls > 0);
+
+    // Past the minimum interval it measures again, across the whole window the
+    // rapid calls accumulated rather than a sliver of it.
+    burnCpu(std::chrono::milliseconds(300));
+    double afterRapidSampling = collector.collect().usagePercent;
+    assert(isValidPercent(afterRapidSampling));
+    assert(afterRapidSampling > 0.0);
 
     // Sampling state belongs to the instance, not to the process: a fresh
     // collector starts from its own baseline even after another has been used.

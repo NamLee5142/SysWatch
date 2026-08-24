@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 
 #include "domain/CPUInfo.h"
@@ -17,6 +18,7 @@ private:
     double sampleUsagePercent();
 
     bool hasPreviousSample_{false};
+    std::chrono::steady_clock::time_point previousSampleTime_{};
     std::uint64_t previousIdleTicks_{0};
     std::uint64_t previousTotalTicks_{0};
     double lastUsagePercent_{0.0};

@@ -1,6 +1,7 @@
 #include "collector/CPUCollector.h"
 
 #include <algorithm>
+#include <chrono>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -22,6 +23,14 @@ double clampPercent(double value) {
     return std::min(100.0, std::max(0.0, value));
 }
 
+// Windows accounts CPU time in ~15.6ms scheduler ticks, so an interval spanning
+// only one or two of them is mostly rounding error — it can read 0% on a busy
+// machine or 100% on an idle one depending on which core happened to tick.
+// Below this floor there is nothing worth measuring, so the previous reading
+// stands. Comfortably under AgentConfig::collectionInterval, which defaults to
+// one second.
+constexpr std::chrono::milliseconds kMinimumSampleInterval{100};
+
 } // namespace
 
 CPUInfo CPUCollector::collect() {
@@ -37,6 +46,17 @@ CPUInfo CPUCollector::collect() {
 
 double CPUCollector::sampleUsagePercent() {
 #ifdef _WIN32
+    const auto now = std::chrono::steady_clock::now();
+
+    // Checked before reading the counters, and it leaves the baseline
+    // untouched: the next accepted sample then measures across the whole
+    // accumulated window instead of the sliver since the last rapid call. A
+    // caller polling faster than the floor still gets a fresh reading every
+    // kMinimumSampleInterval rather than a permanently frozen one.
+    if (hasPreviousSample_ && now - previousSampleTime_ < kMinimumSampleInterval) {
+        return lastUsagePercent_;
+    }
+
     FILETIME idle;
     FILETIME kernel;
     FILETIME user;
@@ -55,6 +75,7 @@ double CPUCollector::sampleUsagePercent() {
     const std::uint64_t totalDelta = totalTicks - previousTotalTicks_;
 
     hasPreviousSample_ = true;
+    previousSampleTime_ = now;
     previousIdleTicks_ = idleTicks;
     previousTotalTicks_ = totalTicks;
 
@@ -64,8 +85,7 @@ double CPUCollector::sampleUsagePercent() {
         return 0.0;
     }
 
-    // Two samples inside the counter's resolution. The previous reading is a
-    // better answer than dividing by zero.
+    // Defensive: the interval floor above should already have ruled this out.
     if (totalDelta == 0) {
         return lastUsagePercent_;
     }
