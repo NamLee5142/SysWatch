@@ -45,6 +45,14 @@ target_link_libraries(agent_tests PRIVATE agent_core)
 
 target_include_directories(agent_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
+add_executable(cpu_collector_tests
+    tests/cpu_collector_tests.cpp
+)
+
+target_link_libraries(cpu_collector_tests PRIVATE agent_core)
+
+target_include_directories(cpu_collector_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
 add_executable(http_server_tests
     tests/http_server_lifecycle_tests.cpp
 )
