@@ -1,3 +1,3 @@
-from .snapshot_store import SnapshotStore
+from .snapshot_store import HostSummary, SnapshotStore
 
-__all__ = ["SnapshotStore"]
+__all__ = ["HostSummary", "SnapshotStore"]

@@ -1,4 +1,5 @@
-from datetime import timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -7,6 +8,19 @@ from app.db import get_session
 from app.db.models import SnapshotRecord
 
 DEFAULT_LIMIT = 100
+
+
+@dataclass(frozen=True)
+class HostSummary:
+    """One host's activity, aggregated over its snapshots.
+
+    Not a SnapshotRecord: every field here is computed across many rows, so
+    handing back an ORM instance would imply a row that does not exist.
+    """
+
+    host_name: str
+    last_collected_at: datetime
+    snapshot_count: int
 
 
 def to_storage_time(value):
@@ -86,6 +100,38 @@ class SnapshotStore:
 
         with get_session() as session:
             return session.execute(statement).scalar_one()
+
+    def hosts(self):
+        """Every host that has reported, most recently active first.
+
+        Lets the dashboard populate a host selector without paging the whole
+        table to discover which hosts exist.
+        """
+        last_collected_at = func.max(SnapshotRecord.collected_at)
+
+        statement = (
+            select(
+                SnapshotRecord.host_name,
+                last_collected_at,
+                func.count(SnapshotRecord.id),
+            )
+            .group_by(SnapshotRecord.host_name)
+            .order_by(last_collected_at.desc(), SnapshotRecord.host_name)
+        )
+
+        with get_session() as session:
+            rows = session.execute(statement).all()
+
+        return [
+            HostSummary(
+                host_name=host_name,
+                # Aggregates bypass _hydrate(), so the UTC re-tagging that
+                # callers rely on has to happen here too.
+                last_collected_at=from_storage_time(collected_at),
+                snapshot_count=snapshot_count,
+            )
+            for host_name, collected_at, snapshot_count in rows
+        ]
 
     def prune(self, older_than):
         """Delete snapshots collected before the cutoff. Returns rows removed."""
