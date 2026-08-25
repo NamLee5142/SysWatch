@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
-from app.api import health, snapshot, snapshots
+from app.api import health, snapshot, snapshots, status
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
 from app.repositories import SnapshotStore
@@ -74,6 +74,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(status.router)
     app.include_router(snapshot.router)
     app.include_router(snapshots.router)
 
