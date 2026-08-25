@@ -9,6 +9,16 @@ from app.db.models import SnapshotRecord
 
 DEFAULT_LIMIT = 100
 
+# strftime patterns that truncate a timestamp to the start of its bucket. The
+# grouped-by value doubles as the bucket's label, so the two can never disagree.
+BUCKET_FORMATS = {
+    "minute": "%Y-%m-%d %H:%M:00",
+    "hour": "%Y-%m-%d %H:00:00",
+    "day": "%Y-%m-%d 00:00:00",
+}
+BUCKET_LABEL_FORMAT = "%Y-%m-%d %H:%M:%S"
+RAW_BUCKET = "raw"
+
 
 @dataclass(frozen=True)
 class HostSummary:
@@ -21,6 +31,31 @@ class HostSummary:
     host_name: str
     last_collected_at: datetime
     snapshot_count: int
+
+
+@dataclass(frozen=True)
+class SeriesPoint:
+    """One plotted value: a bucket's start time and the average within it."""
+
+    at: datetime
+    value: float
+
+
+def metric_expression(metric):
+    """SQL for one metric, as a percentage so every series shares a 0-100 axis.
+
+    nullif() guards the divisions: SQLite would quietly return NULL on a zero
+    total, but PostgreSQL raises, and this has to survive that move.
+    """
+    if metric == "cpu":
+        return SnapshotRecord.cpu_usage_percent
+    if metric == "memory":
+        return 100.0 * SnapshotRecord.mem_used_mb / func.nullif(SnapshotRecord.mem_total_mb, 0)
+    if metric == "disk":
+        used_gb = SnapshotRecord.disk_total_gb - SnapshotRecord.disk_free_gb
+        return 100.0 * used_gb / func.nullif(SnapshotRecord.disk_total_gb, 0)
+
+    raise ValueError(f"Unknown metric: {metric}")
 
 
 def to_storage_time(value):
@@ -132,6 +167,59 @@ class SnapshotStore:
             )
             for host_name, collected_at, snapshot_count in rows
         ]
+
+    def series(self, metric, host_name=None, since=None, until=None,
+               bucket="hour", limit=DEFAULT_LIMIT):
+        """Bucketed averages for one metric, oldest first.
+
+        Deliberately the opposite order to query(), which is newest-first for
+        paging: a chart is read left to right through time. Returning at most
+        `limit` points is what keeps a month of 10-second samples from being
+        shipped to a browser to draw a few hundred pixels.
+        """
+        value = metric_expression(metric)
+
+        if bucket == RAW_BUCKET:
+            statement = self._filtered(
+                select(SnapshotRecord.collected_at, value), host_name, since, until
+            )
+            # id breaks ties for the same reason paging needs it: two snapshots
+            # can share a collection time.
+            statement = statement.order_by(
+                SnapshotRecord.collected_at.asc(), SnapshotRecord.id.asc()
+            )
+        else:
+            label = func.strftime(self._bucket_format(bucket), SnapshotRecord.collected_at)
+            statement = self._filtered(
+                select(label, func.avg(value)), host_name, since, until
+            )
+            statement = statement.group_by(label).order_by(label.asc())
+
+        with get_session() as session:
+            rows = session.execute(statement.limit(limit)).all()
+
+        return [
+            SeriesPoint(at=self._point_time(at, bucket), value=float(value))
+            for at, value in rows
+            # A NULL average means every row in the bucket had a zero total, so
+            # there is no percentage to plot. Dropping the point is honest;
+            # plotting a zero would read as an idle machine.
+            if value is not None
+        ]
+
+    def _bucket_format(self, bucket):
+        try:
+            return BUCKET_FORMATS[bucket]
+        except KeyError:
+            raise ValueError(f"Unknown bucket: {bucket}") from None
+
+    def _point_time(self, at, bucket):
+        # A raw point carries a real datetime column; a bucketed one carries the
+        # strftime label, which is a string and has to be read back.
+        if bucket == RAW_BUCKET:
+            return from_storage_time(at)
+
+        return datetime.strptime(at, BUCKET_LABEL_FORMAT).replace(tzinfo=timezone.utc)
 
     def prune(self, older_than):
         """Delete snapshots collected before the cutoff. Returns rows removed."""

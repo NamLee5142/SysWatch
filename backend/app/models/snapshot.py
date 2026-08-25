@@ -1,6 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
+
+Metric = Literal["cpu", "memory", "disk"]
+Bucket = Literal["raw", "minute", "hour", "day"]
 
 
 class CPUInfo(BaseModel):
@@ -73,3 +77,28 @@ class SnapshotPage(BaseModel):
     # Total rows matching the filters, ignoring limit and offset, so a caller
     # can tell whether more pages exist without fetching them.
     count: int
+
+
+class SeriesPoint(BaseModel):
+    """One point on a chart: the bucket's start time and its average value."""
+
+    t: datetime
+    # Always a percentage, so cpu, memory and disk share one 0-100 axis and one
+    # chart component can render any of them.
+    value: float
+
+    @classmethod
+    def from_point(cls, point) -> "SeriesPoint":
+        return cls(t=point.at, value=point.value)
+
+
+class Series(BaseModel):
+    """A metric over time, oldest first.
+
+    Note the order: /snapshots is newest-first for paging, this is oldest-first
+    because a chart is read left to right. Reversing one silently flips an axis.
+    """
+
+    metric: Metric
+    bucket: Bucket
+    points: list[SeriesPoint]
