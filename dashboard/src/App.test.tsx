@@ -4,11 +4,10 @@ import { describe, expect, it } from 'vitest'
 import App from './App'
 
 describe('App', () => {
-  // A scaffold commit's one job is proving the toolchain runs end to end:
-  // TypeScript compiles, jsdom provides a DOM, and the matchers are loaded.
-  it('renders', () => {
+  it('renders the shell with the overview page at the root path', () => {
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: 'SysWatch' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'CPU' })).toBeInTheDocument()
   })
 })

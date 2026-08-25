@@ -1,0 +1,99 @@
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100svh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  border-right: 1px solid var(--border);
+}
+
+.brand {
+  margin: 0 0 24px;
+  padding: 0 12px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.navLink {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.navLink:hover {
+  background: var(--border);
+}
+
+.navLinkActive {
+  background: var(--accent-bg);
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hostName {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dotUp {
+  background: var(--status-up);
+}
+
+.dotDown {
+  background: var(--status-down);
+}
+
+.dotUnknown {
+  background: var(--status-unknown);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  padding: 24px;
+}
