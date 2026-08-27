@@ -1,5 +1,5 @@
 import { getLatestSnapshot, getStatus } from '../api/client'
-import { Gauge } from '../components/Gauge'
+import { GaugeCard } from '../components/GaugeCard'
 import { RelativeTime } from '../components/RelativeTime'
 import { StatCard } from '../components/StatCard'
 import { StatusDot } from '../components/StatusDot'
@@ -37,11 +37,7 @@ export function OverviewPage() {
     <div className={styles.page}>
       <h1>Overview</h1>
       <div className={styles.grid}>
-        <div className={styles.gaugeCard}>
-          <Gauge value={cpuInfo.usagePercent} />
-          <span className={styles.gaugeCardLabel}>CPU</span>
-          <span className={styles.gaugeCardHint}>{cpuInfo.coreCount} cores</span>
-        </div>
+        <GaugeCard value={cpuInfo.usagePercent} label="CPU" hint={`${cpuInfo.coreCount} cores`} />
 
         <StatCard
           label="Memory"
