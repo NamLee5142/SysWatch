@@ -1,5 +1,10 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
+import { getLatestSnapshot, getStatus } from '../api/client'
+import { StatusDot } from '../components/StatusDot'
+import { usePolling } from '../hooks/usePolling'
+import { AGENT_STATE_LABEL } from '../lib/agentState'
+import { POLL_INTERVAL_MS } from '../lib/constants'
 import styles from './AppShell.module.css'
 
 interface NavItem {
@@ -28,6 +33,17 @@ function navLinkClassName({ isActive }: { isActive: boolean }): string {
 }
 
 export function AppShell() {
+  // Independent of whatever the current page fetches: this header is chrome
+  // rendered on every route, including ones (History, System) that do not
+  // themselves poll the latest snapshot. A little duplicated polling against
+  // a cheap SQLite read is the cost of that — see the "Data fetching" locked
+  // decision for why this app has no shared request cache to avoid it.
+  const snapshot = usePolling((signal) => getLatestSnapshot(undefined, signal), POLL_INTERVAL_MS)
+  const status = usePolling(getStatus, POLL_INTERVAL_MS)
+
+  const agentState = status.data?.agent ?? 'unknown'
+  const hostName = snapshot.data?.systemInfo.hostName
+
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -46,12 +62,10 @@ export function AppShell() {
       </aside>
       <div className={styles.main}>
         <header className={styles.header}>
-          {/* Static until the polling hooks land: this shell has to be
-              reviewable on its own before it has anything live to show. */}
-          <span className={styles.hostName}>—</span>
+          <span className={styles.hostName}>{hostName ?? '—'}</span>
           <span className={styles.connection}>
-            <span className={`${styles.dot} ${styles.dotUnknown}`} aria-hidden="true" />
-            Unknown
+            <StatusDot state={agentState} />
+            {AGENT_STATE_LABEL[agentState]}
           </span>
         </header>
         <main className={styles.content}>

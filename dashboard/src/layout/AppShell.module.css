@@ -74,24 +74,6 @@
   color: var(--text);
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.dotUp {
-  background: var(--status-up);
-}
-
-.dotDown {
-  background: var(--status-down);
-}
-
-.dotUnknown {
-  background: var(--status-unknown);
-}
-
 .content {
   flex: 1;
   min-width: 0;
