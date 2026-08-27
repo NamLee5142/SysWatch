@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatGB, formatMemoryMB, formatRelativeTime } from './format'
+import { formatGB, formatMemoryMB, formatRelativeTime, percentOf } from './format'
 
 describe('formatMemoryMB', () => {
   it('renders whole MB below 1 GB', () => {
@@ -35,6 +35,27 @@ describe('formatGB', () => {
 
   it('renders zero explicitly rather than an empty string', () => {
     expect(formatGB(0)).toBe('0 GB')
+  })
+})
+
+describe('percentOf', () => {
+  it('computes the same ratio the backend uses for memory and disk', () => {
+    // 100 * used / total, matching metric_expression() in
+    // backend/app/repositories/snapshot_store.py.
+    expect(percentOf(4096, 16384)).toBe(25)
+  })
+
+  it('does not round', () => {
+    expect(percentOf(1, 3)).toBeCloseTo(33.333, 3)
+  })
+
+  it('returns 0 rather than NaN when total is zero', () => {
+    // A bad collector reading must render an empty gauge, not "NaN%".
+    expect(percentOf(5, 0)).toBe(0)
+  })
+
+  it('returns 0 rather than a negative or Infinity when total is negative', () => {
+    expect(percentOf(5, -10)).toBe(0)
   })
 })
 
