@@ -8,7 +8,7 @@ import { usePolling } from '../hooks/usePolling'
 import { useUpdateEffect } from '../hooks/useUpdateEffect'
 import { POLL_INTERVAL_MS } from '../lib/constants'
 import { DEFAULT_TIME_RANGE, type TimeRange } from '../lib/timeRanges'
-import styles from './CpuPage.module.css'
+import styles from './MetricPage.module.css'
 
 export function CpuPage() {
   const [range, setRange] = useState<TimeRange>(DEFAULT_TIME_RANGE)

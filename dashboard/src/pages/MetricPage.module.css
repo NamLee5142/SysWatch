@@ -1,3 +1,8 @@
+/* Shared shell for the three single-metric pages (CPU, Memory, Disk):
+   a headline summary row, then a bordered chart section with its own
+   time-range picker. First split out from CpuPage.module.css once
+   MemoryPage needed the identical rules verbatim, not just something similar. */
+
 .page {
   display: flex;
   flex-direction: column;

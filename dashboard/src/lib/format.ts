@@ -17,6 +17,18 @@ export function formatGB(gb: number): string {
   return `${Math.round(gb)}${NBSP}GB`
 }
 
+/** A raw 0-100 number for feeding a Gauge, not a display string — the memory
+ *  and disk pages' headline percentage, computed the same way the backend's
+ *  own metric_expression() does it. Guarded against a zero or negative total
+ *  the same way the backend guards its division: a bad collector reading
+ *  must render as 0%, not NaN%. */
+export function percentOf(part: number, total: number): number {
+  if (total <= 0) {
+    return 0
+  }
+  return (part / total) * 100
+}
+
 export function formatRelativeTime(iso: string, now: Date = new Date()): string {
   const thenMs = new Date(iso).getTime()
   // Not clamped to 0: every branch below is an upper bound starting from the
