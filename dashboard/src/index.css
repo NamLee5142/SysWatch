@@ -65,3 +65,20 @@ h2 {
 p {
   margin: 0;
 }
+
+/* Screen-reader-only text: pairs with role="status" wrappers around skeleton
+   loading layouts, whose shimmer blocks are otherwise purely decorative and
+   announce nothing on their own. Standard clip-based pattern, not a
+   component — a cross-cutting accessibility primitive belongs with the other
+   base resets in this file, not duplicated behind a CSS Module per page. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
