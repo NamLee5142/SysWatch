@@ -90,4 +90,35 @@ describe('MetricChart', () => {
       expect(screen.getByText(tick)).toBeInTheDocument()
     }
   })
+
+  it('shows a loading skeleton instead of the chart or the empty state when loading', () => {
+    render(<MetricChart points={[]} ariaLabel="CPU usage over time" loading />)
+
+    expect(screen.queryByText('No data for this range.')).not.toBeInTheDocument()
+    expect(document.querySelector('.recharts-line-curve')).not.toBeInTheDocument()
+  })
+
+  it('takes priority over the empty state even if points happen to be populated', () => {
+    // Should not be reachable in practice (a page passes loading only before
+    // its first fetch resolves, when points is still []) — but loading being
+    // checked first, not points.length, is what the component actually
+    // guarantees, and that ordering is worth pinning down directly.
+    render(<MetricChart points={POINTS} ariaLabel="CPU usage over time" loading />)
+
+    expect(document.querySelector('.recharts-line-curve')).not.toBeInTheDocument()
+  })
+
+  it('announces loading to assistive tech via a status region, not a static image label', () => {
+    render(<MetricChart points={[]} ariaLabel="CPU usage over time" loading />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading CPU usage over time')
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('defaults to not loading, so existing callers are unaffected', () => {
+    render(<MetricChart points={POINTS} ariaLabel="CPU usage over time" />)
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument()
+  })
 })

@@ -3,6 +3,7 @@ import type { TooltipContentProps } from 'recharts'
 
 import type { SeriesPoint } from '../api/types'
 import styles from './MetricChart.module.css'
+import { Skeleton } from './Skeleton'
 
 interface MetricChartProps {
   points: SeriesPoint[]
@@ -11,6 +12,9 @@ interface MetricChartProps {
   // single 0-100 axis serve CPU, memory and disk without a per-page variant.
   color?: string
   ariaLabel: string
+  // True only before the series has ever resolved — see the caller-side note
+  // on why this is not simply `points.length === 0`.
+  loading?: boolean
 }
 
 function formatTick(iso: string): string {
@@ -38,7 +42,22 @@ function ChartTooltip({ active, payload, label }: TooltipContentProps) {
 
 /** A percentage-over-time line, shared by the CPU, Memory and Disk trend
  *  charts so their axes, tooltip and empty state read identically. */
-export function MetricChart({ points, color = 'var(--accent)', ariaLabel }: MetricChartProps) {
+export function MetricChart({ points, color = 'var(--accent)', ariaLabel, loading = false }: MetricChartProps) {
+  // Distinct from the empty state below: a first load and a genuinely empty
+  // query used to render the same "No data for this range." message, which
+  // is misleading while a fetch is still in flight — that is not yet a
+  // settled answer. role="status" here (a live region) rather than role="img"
+  // (a static graphic with a name) reflects that this is a transient phase,
+  // not a final one.
+  if (loading) {
+    return (
+      <div className={styles.chart} role="status">
+        <span className="visually-hidden">{`Loading ${ariaLabel}`}</span>
+        <Skeleton width="100%" height={220} />
+      </div>
+    )
+  }
+
   if (points.length === 0) {
     return (
       <div className={styles.chart} role="img" aria-label={ariaLabel}>
