@@ -1,0 +1,94 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+section.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.section h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.statusList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+
+.statusRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.statusRow dt {
+  color: var(--text);
+}
+
+.statusRow dd {
+  margin: 0;
+  font-weight: 500;
+  color: var(--text-strong);
+  text-align: right;
+}
+
+.connectionValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.errorValue {
+  color: var(--status-down);
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-strong);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.placeholder {
+  color: var(--text);
+  font-size: 14px;
+}
