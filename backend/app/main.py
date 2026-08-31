@@ -2,9 +2,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
-from app.api import health, snapshot, snapshots
+from app.api import health, hosts, snapshot, snapshots, status
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
 from app.repositories import SnapshotStore
@@ -59,7 +60,22 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="SysWatch Backend", lifespan=lifespan)
 
+    # Without this the dashboard cannot read the API at all: the browser blocks
+    # a cross-origin fetch before the request reaches any route.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=get_settings().cors_origins,
+        # The API is read-only and unauthenticated. Allowing credentials would
+        # let a browser attach cookies to these requests, which is exactly what
+        # should not happen until Phase 4 adds authentication.
+        allow_credentials=False,
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
+
     app.include_router(health.router)
+    app.include_router(status.router)
+    app.include_router(hosts.router)
     app.include_router(snapshot.router)
     app.include_router(snapshots.router)
 

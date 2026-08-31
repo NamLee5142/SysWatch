@@ -12,7 +12,8 @@ class SnapshotCollector {
 public:
     SnapshotCollector() = default;
 
-    Snapshot collect() const {
+    // Not const: CPUCollector has to carry sampling state between calls.
+    Snapshot collect() {
         Snapshot snapshot;
         snapshot.collectedAt = std::chrono::system_clock::now();
         snapshot.cpuInfo = cpuCollector.collect();

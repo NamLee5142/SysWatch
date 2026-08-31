@@ -1,0 +1,28 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.grid {
+  display: grid;
+  /* auto-fit rather than a fixed column count: the tile count here is
+     content-driven (CPU, memory, disk, hostname, OS, last update,
+     connection), not a number worth hardcoding into the layout. */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.connectionValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.placeholder {
+  color: var(--text);
+  font-size: 14px;
+}

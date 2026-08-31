@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -239,3 +239,12 @@ agent/*.pdb
 syswatch.db
 syswatch.db-wal
 syswatch.db-shm
+
+# Dashboard (Node / Vite). node_modules is thousands of files restored from
+# package-lock.json, so it never belongs in the repository. The build output
+# lands in dashboard/dist, already covered by the dist/ rule further up.
+node_modules/
+.vite/
+dashboard/dist-ssr/
+*.local
+npm-debug.log*

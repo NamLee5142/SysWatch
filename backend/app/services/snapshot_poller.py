@@ -30,10 +30,31 @@ class SnapshotPoller:
         self._prune_interval_seconds = prune_interval_seconds
         self._task = None
         self._last_prune = None
+        # What the last tick did. Nothing else records it: poll_once() swallows
+        # every failure by design, so without this the API has no way to tell
+        # a healthy agent from one that has been unreachable for an hour.
+        self._last_polled_at = None
+        self._last_success_at = None
+        self._last_error = None
 
     @property
     def running(self):
         return self._task is not None and not self._task.done()
+
+    @property
+    def last_polled_at(self):
+        """When the loop last completed a tick, successful or not."""
+        return self._last_polled_at
+
+    @property
+    def last_success_at(self):
+        """When a snapshot last actually arrived from the agent."""
+        return self._last_success_at
+
+    @property
+    def last_error(self):
+        """Why the last tick failed, or None if it reached the agent."""
+        return self._last_error
 
     def start(self):
         """Begin polling in the background. Repeat calls are ignored."""
@@ -70,9 +91,23 @@ class SnapshotPoller:
             # loop without stalling every request served by this process.
             await asyncio.to_thread(self._service.get_snapshot)
         except LookupError:
+            # The agent answered, it just has nothing collected yet. That is a
+            # reachable agent, so it clears the error without counting as a
+            # successful collection.
             logger.debug("Agent has no snapshot to collect yet")
-        except Exception:
+            self._record(error=None)
+        except Exception as exc:
             logger.warning("Snapshot poll failed", exc_info=True)
+            self._record(error=f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
+        else:
+            self._record(error=None, collected=True)
+
+    def _record(self, error, collected=False):
+        now = datetime.now(timezone.utc)
+        self._last_polled_at = now
+        self._last_error = error
+        if collected:
+            self._last_success_at = now
 
     async def prune_if_due(self):
         """Drop snapshots past the retention window, at most hourly.

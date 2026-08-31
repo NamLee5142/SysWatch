@@ -1,0 +1,84 @@
+/* Base tokens and resets only. Component and layout styling arrives with the
+   app shell and the shared metric components, as CSS Modules. */
+
+:root {
+  --text: #6b6375;
+  --text-strong: #08060d;
+  --bg: #fff;
+  --border: #e5e4e7;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  /* Active-nav highlight, and the agent/backend connection dot. Introduced by
+     the app shell; the shared metric components reuse the status colors for
+     anything else that reflects agent reachability. */
+  --accent: #7c5cff;
+  --accent-bg: rgba(124, 92, 255, 0.12);
+  --status-up: #16a34a;
+  --status-down: #dc2626;
+  --status-unknown: #9ca3af;
+
+  font: 16px/145% var(--sans);
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-strong: #f3f4f6;
+    --bg: #16171d;
+    --border: #2e303a;
+
+    --accent: #9b8afb;
+    --accent-bg: rgba(155, 138, 251, 0.16);
+    --status-up: #4ade80;
+    --status-down: #f87171;
+    --status-unknown: #6b7280;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2 {
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+p {
+  margin: 0;
+}
+
+/* Screen-reader-only text: pairs with role="status" wrappers around skeleton
+   loading layouts, whose shimmer blocks are otherwise purely decorative and
+   announce nothing on their own. Standard clip-based pattern, not a
+   component — a cross-cutting accessibility primitive belongs with the other
+   base resets in this file, not duplicated behind a CSS Module per page. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

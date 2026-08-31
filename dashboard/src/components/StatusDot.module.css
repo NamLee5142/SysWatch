@@ -1,0 +1,18 @@
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dotUp {
+  background: var(--status-up);
+}
+
+.dotDown {
+  background: var(--status-down);
+}
+
+.dotUnknown {
+  background: var(--status-unknown);
+}
