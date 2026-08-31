@@ -7,6 +7,7 @@
 #include "MemoryCollector.h"
 #include "DiskCollector.h"
 #include "OsCollector.h"
+#include "ProcessCollector.h"
 
 class SnapshotCollector {
 public:
@@ -20,6 +21,7 @@ public:
         snapshot.memoryInfo = memoryCollector.collect();
         snapshot.diskInfo = diskCollector.collect();
         snapshot.systemInfo = osCollector.collect();
+        snapshot.processInfo = processCollector.collect();
         return snapshot;
     }
 
@@ -28,4 +30,5 @@ private:
     MemoryCollector memoryCollector;
     DiskCollector diskCollector;
     OsCollector osCollector;
+    ProcessCollector processCollector;
 };
