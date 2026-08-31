@@ -64,6 +64,14 @@ SysWatch/
             repositories/      # Persistence boundary
             services/          # Snapshot service and background poller
         tests/
+    dashboard/                 # React + TypeScript web dashboard
+        src/
+            api/               # Typed HTTP client and mirrored backend models
+            components/        # Shared UI: gauges, cards, charts, skeletons
+            hooks/             # useApi, usePolling, useUpdateEffect
+            layout/            # AppShell — sidebar, header, routed outlet
+            lib/               # Formatting, error messages, time ranges
+            pages/             # One file per route
     docs/                      # Sprint plans and design notes
     LICENSE
     README.md
@@ -102,9 +110,9 @@ SysWatch/
 
 - [ ] Time-series database
 - [ ] Historical metric storage
-- [ ] Dashboard
-- [ ] Live monitoring
-- [ ] Historical charts
+- [x] Dashboard
+- [x] Live monitoring
+- [x] Historical charts
 - [ ] Search and filtering
 
 ---

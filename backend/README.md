@@ -108,11 +108,25 @@ are case-insensitive. There is no `.env` file support.
 | `SYSWATCH_POLLING_ENABLED` | `true` | Whether the background poller runs |
 | `SYSWATCH_POLL_INTERVAL_SECONDS` | `10.0` | Seconds between collections |
 | `SYSWATCH_RETENTION_DAYS` | `30` | Age at which snapshots are pruned; `0` keeps them forever |
+| `SYSWATCH_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to call this API |
 
 ```bash
 SYSWATCH_AGENT_BASE_URL=http://192.168.1.50:8080 python run.py
 SYSWATCH_POLL_INTERVAL_SECONDS=60 SYSWATCH_RETENTION_DAYS=90 python run.py
 ```
+
+`SYSWATCH_CORS_ORIGINS` takes a comma-separated list, not JSON, so it can be set
+the way any other shell variable is:
+
+```bash
+SYSWATCH_CORS_ORIGINS=http://localhost:5173,http://192.168.1.50:5173 python run.py
+```
+
+The two default origins are both spellings of the Vite dev server — a browser
+treats `localhost` and `127.0.0.1` as different origins even on the same
+machine, so both are listed. Credentials are never allowed regardless of which
+origins are configured (see `create_app()`), since the API is unauthenticated
+and Phase 4 is where that changes.
 
 An invalid value is rejected at startup — a non-numeric `SYSWATCH_PORT` or a
 `SYSWATCH_RETENTION_DAYS=forever` raises a `ValidationError` rather than
@@ -189,6 +203,9 @@ Interactive documentation is served at `/docs`, with the raw schema at
 | `GET /snapshot` | Agent, live | `503` |
 | `GET /snapshots` | Database | Still works |
 | `GET /snapshots/latest` | Database | Still works |
+| `GET /snapshots/series` | Database | Still works |
+| `GET /status` | Backend + poller state | `200`, reports `agent: "down"` |
+| `GET /hosts` | Database | Still works |
 
 ### `GET /`
 
@@ -278,6 +295,42 @@ caller holding one page can tell whether more exist.
 Timestamps may be given with or without an offset; a naive value is read as UTC.
 A window where `since` is after `until` returns `422`.
 
+### `GET /snapshots/series`
+
+Bucketed averages for one metric, oldest first — built for charting, where
+`GET /snapshots` (newest-first, one row per collection) would mean the client
+reverses and averages the data itself.
+
+```bash
+curl "http://127.0.0.1:8000/snapshots/series?metric=cpu&since=2026-08-12T00:00:00Z&bucket=hour"
+```
+
+```json
+{
+  "metric": "cpu",
+  "bucket": "hour",
+  "points": [
+    {"t": "2026-08-12T00:00:00Z", "value": 42.5},
+    {"t": "2026-08-12T01:00:00Z", "value": 38.1}
+  ]
+}
+```
+
+| Parameter | Default | Notes |
+| --- | --- | --- |
+| `metric` | required | `cpu`, `memory` or `disk` — always normalised to one 0-100 axis |
+| `host` | all hosts | Exact host name |
+| `since` | unbounded | Earliest collection time, inclusive |
+| `until` | unbounded | Latest collection time, inclusive |
+| `bucket` | `hour` | `raw`, `minute`, `hour` or `day` — the averaging window, or every sample for `raw` |
+
+Points are **oldest first**, the opposite order from `GET /snapshots` — a chart
+is read left to right, and reversing one silently flips its axis.
+
+A window whose point count would exceed 5000 returns `422` rather than being
+silently truncated, since a truncated chart draws a range that did not happen.
+Narrow the window or pick a coarser bucket.
+
 ### `GET /snapshots/latest`
 
 The most recently stored snapshot, in the same shape as `GET /snapshot`. Takes
@@ -286,6 +339,56 @@ nothing matches.
 
 This is the endpoint to fall back to when `GET /snapshot` returns `503` — it
 serves the last known state from storage rather than failing.
+
+### `GET /status`
+
+Whether the backend is reaching the agent — always `200`, even when it is not.
+A dashboard needs to tell "the agent is unreachable" apart from "the backend
+itself is unreachable", and a non-2xx response here could not make that
+distinction.
+
+```json
+{
+  "backend": "ok",
+  "agent": "up",
+  "pollerRunning": true,
+  "lastPollAt": "2026-08-12T11:15:30Z",
+  "lastSuccessAt": "2026-08-12T11:15:30Z",
+  "lastPollError": null
+}
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `backend` | `"ok"` | Constant; this process answered the request |
+| `agent` | `"up"` \| `"down"` \| `"unknown"` | See below |
+| `pollerRunning` | bool | `false` when `SYSWATCH_POLLING_ENABLED=false` |
+| `lastPollAt` | datetime or `null` | When the poller last completed a tick, successful or not |
+| `lastSuccessAt` | datetime or `null` | When a snapshot last actually arrived — diverges from `lastPollAt` while the agent is down |
+| `lastPollError` | string or `null` | The most recent poll failure, if any |
+
+`agent` is `"unknown"` rather than `"down"` before the poller's first tick
+lands, or whenever polling is disabled — reporting "down" in either case would
+put a red light on a dashboard watching a perfectly healthy agent nobody has
+asked about yet. It only becomes `"up"` or `"down"` once at least one poll has
+completed.
+
+### `GET /hosts`
+
+Every host that has stored at least one snapshot, most recently active first.
+Never contacts the agent.
+
+```json
+{
+  "items": [
+    {"hostName": "devbox", "lastCollectedAt": "2026-08-12T11:15:27Z", "snapshotCount": 4213}
+  ]
+}
+```
+
+An empty `items` list is a `200`, not a `404` — a fresh database is a valid
+state, and the dashboard renders an empty selector rather than an error page
+for it.
 
 ## Testing
 
