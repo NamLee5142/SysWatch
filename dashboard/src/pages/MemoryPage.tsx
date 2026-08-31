@@ -4,6 +4,7 @@ import { getLatestSnapshot, getSnapshotSeries } from '../api/client'
 import { GaugeCard } from '../components/GaugeCard'
 import { GaugeCardSkeleton } from '../components/GaugeCardSkeleton'
 import { MetricChart } from '../components/MetricChart'
+import { SnapshotErrorMessage } from '../components/SnapshotErrorMessage'
 import { TimeRangePicker } from '../components/TimeRangePicker'
 import { usePolling } from '../hooks/usePolling'
 import { useUpdateEffect } from '../hooks/useUpdateEffect'
@@ -48,7 +49,7 @@ export function MemoryPage() {
             size={160}
           />
         ) : snapshot.error ? (
-          <p className={styles.placeholder}>Unable to load the latest snapshot.</p>
+          <SnapshotErrorMessage error={snapshot.error} className={styles.placeholder} />
         ) : (
           <div role="status">
             <span className="visually-hidden">Loading Memory</span>

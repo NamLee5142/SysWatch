@@ -86,6 +86,30 @@ describe('AppShell header', () => {
     await waitFor(() => expect(screen.getByText('Agent unreachable')).toBeInTheDocument())
   })
 
+  it('shows the staleness banner above the page content when the agent is down', async () => {
+    vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
+    vi.mocked(getStatus).mockResolvedValue({ ...STATUS, agent: 'down' })
+
+    renderShell()
+
+    // The banner reuses AppShell's own /status poll (see StalenessBanner's
+    // own doc comment) rather than fetching independently — this is what
+    // proves that wiring, not just the component in isolation, works.
+    await waitFor(() =>
+      expect(screen.getByText('Agent unreachable — showing the last data received.')).toBeInTheDocument(),
+    )
+  })
+
+  it('does not show the staleness banner while the agent is up', async () => {
+    vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
+    vi.mocked(getStatus).mockResolvedValue(STATUS)
+
+    renderShell()
+
+    await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument())
+    expect(screen.queryByText('Agent unreachable — showing the last data received.')).not.toBeInTheDocument()
+  })
+
   it('reflects the agent being up', async () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getStatus).mockResolvedValue(STATUS)

@@ -1,14 +1,18 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getLatestSnapshot, getStatus } from '../api/client'
+import { getLatestSnapshot, getStatus, NetworkError } from '../api/client'
 import type { Snapshot, Status } from '../api/types'
 import { OverviewPage } from './OverviewPage'
 
-vi.mock('../api/client', () => ({
-  getLatestSnapshot: vi.fn(),
-  getStatus: vi.fn(),
-}))
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>()
+  return {
+    ...actual,
+    getLatestSnapshot: vi.fn(),
+    getStatus: vi.fn(),
+  }
+})
 
 const SNAPSHOT: Snapshot = {
   collectedAt: new Date().toISOString(),
@@ -53,6 +57,17 @@ describe('OverviewPage', () => {
     render(<OverviewPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
+  })
+
+  it('shows the network-specific message when the backend is unreachable, not the generic one', async () => {
+    vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
+    vi.mocked(getStatus).mockReturnValue(neverSettles())
+
+    render(<OverviewPage />)
+
+    await waitFor(() =>
+      expect(screen.getByText("Can't reach the backend. Check that it's running.")).toBeInTheDocument(),
+    )
   })
 
   it('renders CPU usage and core count', async () => {

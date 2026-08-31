@@ -2,14 +2,18 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getLatestSnapshot, getSnapshotSeries } from '../api/client'
+import { getLatestSnapshot, getSnapshotSeries, NetworkError } from '../api/client'
 import type { Series, Snapshot } from '../api/types'
 import { CpuPage } from './CpuPage'
 
-vi.mock('../api/client', () => ({
-  getLatestSnapshot: vi.fn(),
-  getSnapshotSeries: vi.fn(),
-}))
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>()
+  return {
+    ...actual,
+    getLatestSnapshot: vi.fn(),
+    getSnapshotSeries: vi.fn(),
+  }
+})
 
 const SNAPSHOT: Snapshot = {
   collectedAt: new Date().toISOString(),
@@ -72,6 +76,20 @@ describe('CpuPage', () => {
     render(<CpuPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
+  })
+
+  it('shows the network-specific message when the backend is unreachable, not the generic one', async () => {
+    vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
+    vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
+
+    render(<CpuPage />)
+
+    // Distinct from the previous test's generic-Error case: proves the
+    // summary section renders SnapshotErrorMessage's real output rather than
+    // a hardcoded string that happens to match one particular cause.
+    await waitFor(() =>
+      expect(screen.getByText("Can't reach the backend. Check that it's running.")).toBeInTheDocument(),
+    )
   })
 
   it('renders CPU usage and core count', async () => {

@@ -5,6 +5,7 @@ import type { DiskInfo } from '../api/types'
 import { GaugeCard } from '../components/GaugeCard'
 import { GaugeCardSkeleton } from '../components/GaugeCardSkeleton'
 import { MetricChart } from '../components/MetricChart'
+import { SnapshotErrorMessage } from '../components/SnapshotErrorMessage'
 import { TimeRangePicker } from '../components/TimeRangePicker'
 import { usePolling } from '../hooks/usePolling'
 import { useUpdateEffect } from '../hooks/useUpdateEffect'
@@ -58,7 +59,7 @@ export function DiskPage() {
         {snapshot.data ? (
           <DiskGauge diskInfo={snapshot.data.diskInfo} />
         ) : snapshot.error ? (
-          <p className={styles.placeholder}>Unable to load the latest snapshot.</p>
+          <SnapshotErrorMessage error={snapshot.error} className={styles.placeholder} />
         ) : (
           <div role="status">
             <span className="visually-hidden">Loading Disk</span>

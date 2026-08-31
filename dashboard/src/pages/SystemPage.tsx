@@ -1,6 +1,7 @@
 import { getHosts, getLatestSnapshot, getStatus } from '../api/client'
 import { RelativeTime } from '../components/RelativeTime'
 import { Skeleton } from '../components/Skeleton'
+import { SnapshotErrorMessage } from '../components/SnapshotErrorMessage'
 import { StatCard } from '../components/StatCard'
 import { StatCardSkeleton } from '../components/StatCardSkeleton'
 import { StatusDot } from '../components/StatusDot'
@@ -31,7 +32,7 @@ export function SystemPage() {
           <StatCard label="OS" value={`${snapshot.data.systemInfo.name} ${snapshot.data.systemInfo.version}`} />
         </div>
       ) : snapshot.error ? (
-        <p className={styles.placeholder}>Unable to load the latest snapshot.</p>
+        <SnapshotErrorMessage error={snapshot.error} className={styles.placeholder} />
       ) : (
         <div className={styles.grid} role="status">
           <span className="visually-hidden">Loading identity</span>

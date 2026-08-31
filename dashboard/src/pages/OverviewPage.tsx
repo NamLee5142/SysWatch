@@ -2,6 +2,7 @@ import { getLatestSnapshot, getStatus } from '../api/client'
 import { GaugeCard } from '../components/GaugeCard'
 import { GaugeCardSkeleton } from '../components/GaugeCardSkeleton'
 import { RelativeTime } from '../components/RelativeTime'
+import { SnapshotErrorMessage } from '../components/SnapshotErrorMessage'
 import { StatCard } from '../components/StatCard'
 import { StatCardSkeleton } from '../components/StatCardSkeleton'
 import { StatusDot } from '../components/StatusDot'
@@ -25,7 +26,7 @@ export function OverviewPage() {
       <div className={styles.page}>
         <h1>Overview</h1>
         {snapshot.error ? (
-          <p className={styles.placeholder}>Unable to load the latest snapshot.</p>
+          <SnapshotErrorMessage error={snapshot.error} className={styles.placeholder} />
         ) : (
           // Seven tiles — the same count and layout as the real grid below —
           // so nothing visibly shifts once data arrives. One status

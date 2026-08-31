@@ -1,15 +1,19 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getHosts, getLatestSnapshot, getStatus } from '../api/client'
+import { getHosts, getLatestSnapshot, getStatus, NetworkError } from '../api/client'
 import type { HostList, Snapshot, Status } from '../api/types'
 import { SystemPage } from './SystemPage'
 
-vi.mock('../api/client', () => ({
-  getLatestSnapshot: vi.fn(),
-  getStatus: vi.fn(),
-  getHosts: vi.fn(),
-}))
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>()
+  return {
+    ...actual,
+    getLatestSnapshot: vi.fn(),
+    getStatus: vi.fn(),
+    getHosts: vi.fn(),
+  }
+})
 
 const SNAPSHOT: Snapshot = {
   collectedAt: new Date().toISOString(),
@@ -88,6 +92,18 @@ describe('SystemPage', () => {
     render(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
+  })
+
+  it('shows the network-specific message for the identity section when the backend is unreachable', async () => {
+    vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
+    vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
+    vi.mocked(getHosts).mockResolvedValue(HOSTS)
+
+    render(<SystemPage />)
+
+    await waitFor(() =>
+      expect(screen.getByText("Can't reach the backend. Check that it's running.")).toBeInTheDocument(),
+    )
   })
 
   it('shows an error message for the connection section when the status fetch fails, not a permanent skeleton', async () => {

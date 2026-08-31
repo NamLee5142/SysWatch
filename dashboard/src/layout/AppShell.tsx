@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
 import { getLatestSnapshot, getStatus } from '../api/client'
+import { StalenessBanner } from '../components/StalenessBanner'
 import { StatusDot } from '../components/StatusDot'
 import { usePolling } from '../hooks/usePolling'
 import { AGENT_STATE_LABEL } from '../lib/agentState'
@@ -68,6 +69,7 @@ export function AppShell() {
             {AGENT_STATE_LABEL[agentState]}
           </span>
         </header>
+        <StalenessBanner agentState={agentState} />
         <main className={styles.content}>
           <Outlet />
         </main>
