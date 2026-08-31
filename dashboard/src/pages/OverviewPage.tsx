@@ -1,7 +1,9 @@
 import { getLatestSnapshot, getStatus } from '../api/client'
 import { GaugeCard } from '../components/GaugeCard'
+import { GaugeCardSkeleton } from '../components/GaugeCardSkeleton'
 import { RelativeTime } from '../components/RelativeTime'
 import { StatCard } from '../components/StatCard'
+import { StatCardSkeleton } from '../components/StatCardSkeleton'
 import { StatusDot } from '../components/StatusDot'
 import { usePolling } from '../hooks/usePolling'
 import { AGENT_STATE_LABEL } from '../lib/agentState'
@@ -15,17 +17,30 @@ export function OverviewPage() {
 
   const agentState = status.data?.agent ?? 'unknown'
 
-  // Minimal on purpose: full loading skeletons and a three-way empty/error/
-  // stale distinction are Phase E's job (commits 20-21). This just has to
-  // not crash before that data exists, and say why in one line when it never
+  // The three-way empty/error/stale distinction (commit 22) still applies
+  // once loaded — this only covers the state before the first snapshot ever
   // arrives.
   if (!snapshot.data) {
     return (
       <div className={styles.page}>
         <h1>Overview</h1>
-        <p className={styles.placeholder}>
-          {snapshot.error ? 'Unable to load the latest snapshot.' : 'Loading…'}
-        </p>
+        {snapshot.error ? (
+          <p className={styles.placeholder}>Unable to load the latest snapshot.</p>
+        ) : (
+          // Seven tiles — the same count and layout as the real grid below —
+          // so nothing visibly shifts once data arrives. One status
+          // announcement for the whole grid, not one per shimmering tile.
+          <div className={styles.grid} role="status">
+            <span className="visually-hidden">Loading Overview</span>
+            <GaugeCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </div>
+        )}
       </div>
     )
   }

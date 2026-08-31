@@ -2,6 +2,7 @@ import { useState } from 'react'
 
 import { getLatestSnapshot, getSnapshotSeries } from '../api/client'
 import { GaugeCard } from '../components/GaugeCard'
+import { GaugeCardSkeleton } from '../components/GaugeCardSkeleton'
 import { MetricChart } from '../components/MetricChart'
 import { TimeRangePicker } from '../components/TimeRangePicker'
 import { usePolling } from '../hooks/usePolling'
@@ -33,31 +34,45 @@ export function CpuPage() {
     series.refetch()
   }, [range, series.refetch])
 
-  // Same minimal-on-purpose stance as Overview: real loading/error polish is
-  // Phase E's job (commits 20-21).
-  if (!snapshot.data) {
-    return (
-      <div className={styles.page}>
-        <h1>CPU</h1>
-        <p className={styles.placeholder}>{snapshot.error ? 'Unable to load the latest snapshot.' : 'Loading…'}</p>
-      </div>
-    )
-  }
-
-  const { cpuInfo } = snapshot.data
-
   return (
     <div className={styles.page}>
       <h1>CPU</h1>
+
+      {/* Its own section, not gated behind the snapshot: the chart has a
+          different data source (series, not snapshot) and no reason to stay
+          hidden — including the TimeRangePicker itself, which needs no
+          fetched data at all — just because the gauge is still loading. */}
       <div className={styles.summary}>
-        <GaugeCard value={cpuInfo.usagePercent} hint={`${cpuInfo.coreCount} cores`} size={160} />
+        {snapshot.data ? (
+          <GaugeCard
+            value={snapshot.data.cpuInfo.usagePercent}
+            hint={`${snapshot.data.cpuInfo.coreCount} cores`}
+            size={160}
+          />
+        ) : snapshot.error ? (
+          <p className={styles.placeholder}>Unable to load the latest snapshot.</p>
+        ) : (
+          <div role="status">
+            <span className="visually-hidden">Loading CPU</span>
+            <GaugeCardSkeleton size={160} />
+          </div>
+        )}
       </div>
+
       <div className={styles.chartSection}>
         <div className={styles.chartHeader}>
           <h2>Trend</h2>
           <TimeRangePicker value={range} onChange={setRange} />
         </div>
-        <MetricChart points={series.data?.points ?? []} ariaLabel="CPU usage over time" />
+        {/* loading only while genuinely unresolved: once series.error is set,
+            this must fall back to the chart's own empty state rather than
+            loading forever — that fallback is unchanged from before this
+            commit, only the "hasn't tried yet" case is new. */}
+        <MetricChart
+          points={series.data?.points ?? []}
+          ariaLabel="CPU usage over time"
+          loading={!series.data && !series.error}
+        />
       </div>
     </div>
   )

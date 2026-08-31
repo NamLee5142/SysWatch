@@ -1,7 +1,9 @@
 import { useState } from 'react'
 
 import { getLatestSnapshot, getSnapshotSeries } from '../api/client'
+import type { DiskInfo } from '../api/types'
 import { GaugeCard } from '../components/GaugeCard'
+import { GaugeCardSkeleton } from '../components/GaugeCardSkeleton'
 import { MetricChart } from '../components/MetricChart'
 import { TimeRangePicker } from '../components/TimeRangePicker'
 import { usePolling } from '../hooks/usePolling'
@@ -10,6 +12,19 @@ import { POLL_INTERVAL_MS } from '../lib/constants'
 import { formatGB, percentOf } from '../lib/format'
 import { DEFAULT_TIME_RANGE, type TimeRange } from '../lib/timeRanges'
 import styles from './MetricPage.module.css'
+
+// The agent reports total and free, not used — derived the same way every
+// page that shows disk usage does (see also OverviewPage).
+function DiskGauge({ diskInfo }: { diskInfo: DiskInfo }) {
+  const usedGB = diskInfo.totalGB - diskInfo.freeGB
+  return (
+    <GaugeCard
+      value={percentOf(usedGB, diskInfo.totalGB)}
+      hint={`${formatGB(usedGB)} used / ${formatGB(diskInfo.freeGB)} free`}
+      size={160}
+    />
+  )
+}
 
 export function DiskPage() {
   const [range, setRange] = useState<TimeRange>(DEFAULT_TIME_RANGE)
@@ -32,37 +47,39 @@ export function DiskPage() {
     series.refetch()
   }, [range, series.refetch])
 
-  if (!snapshot.data) {
-    return (
-      <div className={styles.page}>
-        <h1>Disk</h1>
-        <p className={styles.placeholder}>{snapshot.error ? 'Unable to load the latest snapshot.' : 'Loading…'}</p>
-      </div>
-    )
-  }
-
-  const { diskInfo } = snapshot.data
-  // The agent reports total and free, not used — every page that shows disk
-  // usage has to derive it the same way (see also OverviewPage).
-  const usedGB = diskInfo.totalGB - diskInfo.freeGB
-  const usedPercent = percentOf(usedGB, diskInfo.totalGB)
-
   return (
     <div className={styles.page}>
       <h1>Disk</h1>
+
+      {/* Its own section, not gated behind the snapshot — see CpuPage for
+          why: the chart has a different data source and no reason to stay
+          hidden, TimeRangePicker included, while the gauge is still loading. */}
       <div className={styles.summary}>
-        <GaugeCard
-          value={usedPercent}
-          hint={`${formatGB(usedGB)} used / ${formatGB(diskInfo.freeGB)} free`}
-          size={160}
-        />
+        {snapshot.data ? (
+          <DiskGauge diskInfo={snapshot.data.diskInfo} />
+        ) : snapshot.error ? (
+          <p className={styles.placeholder}>Unable to load the latest snapshot.</p>
+        ) : (
+          <div role="status">
+            <span className="visually-hidden">Loading Disk</span>
+            <GaugeCardSkeleton size={160} />
+          </div>
+        )}
       </div>
+
       <div className={styles.chartSection}>
         <div className={styles.chartHeader}>
           <h2>Trend</h2>
           <TimeRangePicker value={range} onChange={setRange} />
         </div>
-        <MetricChart points={series.data?.points ?? []} ariaLabel="Disk usage over time" />
+        {/* loading only while genuinely unresolved — falls back to the
+            chart's own empty state once series.error is set, unchanged from
+            before this commit. */}
+        <MetricChart
+          points={series.data?.points ?? []}
+          ariaLabel="Disk usage over time"
+          loading={!series.data && !series.error}
+        />
       </div>
     </div>
   )

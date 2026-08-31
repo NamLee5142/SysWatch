@@ -37,13 +37,13 @@ beforeEach(() => {
 })
 
 describe('OverviewPage', () => {
-  it('shows a loading message before the first snapshot arrives', () => {
+  it('shows a loading skeleton before the first snapshot arrives', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getStatus).mockReturnValue(neverSettles())
 
     render(<OverviewPage />)
 
-    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    expect(screen.getByText('Loading Overview')).toBeInTheDocument()
   })
 
   it('shows an error message when the snapshot fetch fails, instead of crashing', async () => {

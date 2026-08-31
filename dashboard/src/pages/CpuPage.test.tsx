@@ -53,13 +53,16 @@ beforeEach(() => {
 })
 
 describe('CpuPage', () => {
-  it('shows a loading message before the first snapshot arrives', () => {
+  it('shows loading skeletons before the first snapshot and series arrive', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
     render(<CpuPage />)
 
-    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    // Two independent sections, each announcing its own loading state — the
+    // summary (gauge) and the chart do not share one gate.
+    expect(screen.getByText('Loading CPU')).toBeInTheDocument()
+    expect(screen.getByText('Loading CPU usage over time')).toBeInTheDocument()
   })
 
   it('shows an error message when the snapshot fetch fails, instead of crashing', async () => {
@@ -148,18 +151,47 @@ describe('CpuPage', () => {
     await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
   })
 
-  it('renders the chart section without crashing when the snapshot arrives before the series does', async () => {
+  it('shows the chart loading skeleton, not the empty state, while the series is still unresolved', async () => {
     // The snapshot is a trivial single-row read and the series is a heavier
     // aggregation query; nothing guarantees they settle in the same order.
-    // The chart section renders as soon as the snapshot is ready, so it must
-    // tolerate series.data still being undefined at that point.
+    // The chart section is independent of the gauge's data source, so it
+    // must show its own loading state rather than "No data for this range."
+    // — which would misrepresent a fetch still in flight as a completed,
+    // empty one.
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
     render(<CpuPage />)
 
     await waitFor(() => expect(screen.getByText('43%')).toBeInTheDocument())
-    expect(screen.getByText('No data for this range.')).toBeInTheDocument()
+    expect(screen.getByText('Loading CPU usage over time')).toBeInTheDocument()
+    expect(screen.queryByText('No data for this range.')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the empty state, not a permanent loading skeleton, when the series fetch fails', async () => {
+    // Once series.error is set the fetch is never going to resolve on its
+    // own — loading has to turn off here, or a genuinely failed request
+    // looks identical to one still in flight forever.
+    vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
+    vi.mocked(getSnapshotSeries).mockRejectedValue(new Error('boom'))
+
+    render(<CpuPage />)
+
+    await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
+    expect(screen.queryByText('Loading CPU usage over time')).not.toBeInTheDocument()
+  })
+
+  it('renders the gauge without crashing when the series resolves before the snapshot does', async () => {
+    // The reverse ordering from the test above: the chart's own data source
+    // is independent, so it must not be held back by (or hold back) the
+    // gauge section either way.
+    vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
+    vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
+
+    render(<CpuPage />)
+
+    await waitFor(() => expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument())
+    expect(screen.getByText('Loading CPU')).toBeInTheDocument()
   })
 
   it('renders the gauge without a redundant "CPU" label, unlike the Overview tile', async () => {

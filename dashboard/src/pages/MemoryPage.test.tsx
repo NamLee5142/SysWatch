@@ -53,13 +53,15 @@ beforeEach(() => {
 })
 
 describe('MemoryPage', () => {
-  it('shows a loading message before the first snapshot arrives', () => {
+  it('shows loading skeletons before the first snapshot and series arrive', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
     render(<MemoryPage />)
 
-    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    // Two independent sections, each announcing its own loading state.
+    expect(screen.getByText('Loading Memory')).toBeInTheDocument()
+    expect(screen.getByText('Loading Memory usage over time')).toBeInTheDocument()
   })
 
   it('shows an error message when the snapshot fetch fails, instead of crashing', async () => {
@@ -152,14 +154,35 @@ describe('MemoryPage', () => {
     await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
   })
 
-  it('renders the chart section without crashing when the snapshot arrives before the series does', async () => {
+  it('shows the chart loading skeleton, not the empty state, while the series is still unresolved', async () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
     render(<MemoryPage />)
 
     await waitFor(() => expect(screen.getByText('25%')).toBeInTheDocument())
-    expect(screen.getByText('No data for this range.')).toBeInTheDocument()
+    expect(screen.getByText('Loading Memory usage over time')).toBeInTheDocument()
+    expect(screen.queryByText('No data for this range.')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the empty state, not a permanent loading skeleton, when the series fetch fails', async () => {
+    vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
+    vi.mocked(getSnapshotSeries).mockRejectedValue(new Error('boom'))
+
+    render(<MemoryPage />)
+
+    await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
+    expect(screen.queryByText('Loading Memory usage over time')).not.toBeInTheDocument()
+  })
+
+  it('renders the gauge without crashing when the series resolves before the snapshot does', async () => {
+    vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
+    vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
+
+    render(<MemoryPage />)
+
+    await waitFor(() => expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument())
+    expect(screen.getByText('Loading Memory')).toBeInTheDocument()
   })
 
   it('renders 0% rather than crashing when totalMB is zero', async () => {
