@@ -64,7 +64,7 @@ describe('SystemPage', () => {
     expect(screen.getByText('Windows 11')).toBeInTheDocument()
   })
 
-  it('shows a loading message for the identity section before the snapshot arrives', async () => {
+  it('shows a loading skeleton for the identity section before the snapshot arrives', async () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
@@ -72,12 +72,12 @@ describe('SystemPage', () => {
     render(<SystemPage />)
 
     // Let the other two sections actually resolve first — right after the
-    // initial render all three legitimately say "Loading…" for a moment,
-    // which is not what this test is checking.
+    // initial render all three legitimately show a loading state for a
+    // moment, which is not what this test is checking.
     await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument())
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
 
-    expect(screen.getAllByText('Loading…')).toHaveLength(1)
+    expect(screen.getByText('Loading identity')).toBeInTheDocument()
   })
 
   it('shows an error message for the identity section when the snapshot fetch fails', async () => {
@@ -88,6 +88,45 @@ describe('SystemPage', () => {
     render(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
+  })
+
+  it('shows an error message for the connection section when the status fetch fails, not a permanent skeleton', async () => {
+    vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
+    vi.mocked(getStatus).mockRejectedValue(new Error('boom'))
+    vi.mocked(getHosts).mockResolvedValue(HOSTS)
+
+    render(<SystemPage />)
+
+    await waitFor(() => expect(screen.getByText('Unable to load status.')).toBeInTheDocument())
+    expect(screen.queryByText('Loading connection status')).not.toBeInTheDocument()
+  })
+
+  it('shows a loading skeleton for the connection section before status arrives', async () => {
+    vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
+    vi.mocked(getStatus).mockReturnValue(neverSettles())
+    vi.mocked(getHosts).mockResolvedValue(HOSTS)
+
+    render(<SystemPage />)
+
+    await waitFor(() => expect(screen.getByText('devbox')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+
+    expect(screen.getByText('Loading connection status')).toBeInTheDocument()
+  })
+
+  it('shows a loading skeleton for the hosts section before the host list arrives', async () => {
+    vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
+    vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
+    vi.mocked(getHosts).mockReturnValue(neverSettles())
+
+    render(<SystemPage />)
+
+    await waitFor(() => expect(screen.getByText('devbox')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument())
+
+    // The real column headers stay visible while the rows are still loading.
+    expect(screen.getByRole('columnheader', { name: 'Host' })).toBeInTheDocument()
+    expect(screen.getByText('Loading hosts')).toBeInTheDocument()
   })
 
   it('renders the connection detail independently of the snapshot section', async () => {

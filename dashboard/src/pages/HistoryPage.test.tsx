@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -37,12 +37,22 @@ beforeEach(() => {
 })
 
 describe('HistoryPage', () => {
-  it('shows a loading message before the first page arrives', () => {
+  it('shows a loading skeleton table before the first page arrives', () => {
     vi.mocked(listSnapshots).mockReturnValue(neverSettles())
 
     render(<HistoryPage />)
 
-    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    // The real column headers stay visible while the rows are still loading.
+    const headers = screen.getAllByRole('columnheader')
+    expect(headers).toHaveLength(5)
+    expect(headers[0]).toHaveTextContent('Collected at')
+    expect(screen.getByText('Loading history')).toBeInTheDocument()
+
+    // The skeleton row itself matches the real table's column count — a
+    // mismatch here would draw a skeleton with the wrong number of cells
+    // under the five real headers.
+    const skeletonRow = screen.getAllByRole('row')[1]
+    expect(within(skeletonRow).getAllByRole('cell')).toHaveLength(5)
   })
 
   it('fetches page 0 with no filters on mount', async () => {
@@ -177,6 +187,9 @@ describe('HistoryPage', () => {
     render(<HistoryPage />)
 
     await waitFor(() => expect(screen.getByText('since must not be after until')).toBeInTheDocument())
+    // The loading skeleton is for "hasn't tried yet", not "tried and failed"
+    // — showing both at once would be a confusing, contradictory screen.
+    expect(screen.queryByText('Loading history')).not.toBeInTheDocument()
   })
 
   it('shows a generic message for a non-422 failure', async () => {

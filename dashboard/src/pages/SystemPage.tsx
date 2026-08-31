@@ -1,7 +1,10 @@
 import { getHosts, getLatestSnapshot, getStatus } from '../api/client'
 import { RelativeTime } from '../components/RelativeTime'
+import { Skeleton } from '../components/Skeleton'
 import { StatCard } from '../components/StatCard'
+import { StatCardSkeleton } from '../components/StatCardSkeleton'
 import { StatusDot } from '../components/StatusDot'
+import { TableSkeletonRows } from '../components/TableSkeletonRows'
 import { usePolling } from '../hooks/usePolling'
 import { AGENT_STATE_LABEL } from '../lib/agentState'
 import { POLL_INTERVAL_MS } from '../lib/constants'
@@ -27,10 +30,14 @@ export function SystemPage() {
           <StatCard label="Hostname" value={snapshot.data.systemInfo.hostName} />
           <StatCard label="OS" value={`${snapshot.data.systemInfo.name} ${snapshot.data.systemInfo.version}`} />
         </div>
+      ) : snapshot.error ? (
+        <p className={styles.placeholder}>Unable to load the latest snapshot.</p>
       ) : (
-        <p className={styles.placeholder}>
-          {snapshot.error ? 'Unable to load the latest snapshot.' : 'Loading…'}
-        </p>
+        <div className={styles.grid} role="status">
+          <span className="visually-hidden">Loading identity</span>
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+        </div>
       )}
 
       <section className={styles.section}>
@@ -59,8 +66,36 @@ export function SystemPage() {
               </div>
             )}
           </dl>
+        ) : status.error ? (
+          <p className={styles.placeholder}>Unable to load status.</p>
         ) : (
-          <p className={styles.placeholder}>{status.error ? 'Unable to load status.' : 'Loading…'}</p>
+          <dl className={styles.statusList} role="status">
+            <span className="visually-hidden">Loading connection status</span>
+            <div className={styles.statusRow}>
+              <dt>
+                <Skeleton width={50} height={13} />
+              </dt>
+              <dd>
+                <Skeleton width={80} height={16} />
+              </dd>
+            </div>
+            <div className={styles.statusRow}>
+              <dt>
+                <Skeleton width={100} height={13} />
+              </dt>
+              <dd>
+                <Skeleton width={60} height={16} />
+              </dd>
+            </div>
+            <div className={styles.statusRow}>
+              <dt>
+                <Skeleton width={160} height={13} />
+              </dt>
+              <dd>
+                <Skeleton width={70} height={16} />
+              </dd>
+            </div>
+          </dl>
         )}
       </section>
 
@@ -93,8 +128,24 @@ export function SystemPage() {
               </table>
             </div>
           )
+        ) : hosts.error ? (
+          <p className={styles.placeholder}>Unable to load hosts.</p>
         ) : (
-          <p className={styles.placeholder}>{hosts.error ? 'Unable to load hosts.' : 'Loading…'}</p>
+          <div className={styles.tableWrapper} role="status">
+            <span className="visually-hidden">Loading hosts</span>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th scope="col">Host</th>
+                  <th scope="col">Last seen</th>
+                  <th scope="col">Snapshots</th>
+                </tr>
+              </thead>
+              <tbody>
+                <TableSkeletonRows columns={3} />
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

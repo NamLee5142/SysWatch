@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 
 import { ApiError, listSnapshots } from '../api/client'
+import { TableSkeletonRows } from '../components/TableSkeletonRows'
 import { useApi } from '../hooks/useApi'
 import { useUpdateEffect } from '../hooks/useUpdateEffect'
 import { formatGB, formatMemoryMB } from '../lib/format'
@@ -115,7 +116,25 @@ export function HistoryPage() {
         </p>
       )}
 
-      {!history.data && !history.error && <p className={styles.placeholder}>Loading…</p>}
+      {!history.data && !history.error && (
+        <div className={styles.tableWrapper} role="status">
+          <span className="visually-hidden">Loading history</span>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th scope="col">Collected at</th>
+                <th scope="col">Host</th>
+                <th scope="col">CPU</th>
+                <th scope="col">Memory</th>
+                <th scope="col">Disk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <TableSkeletonRows columns={5} />
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {history.data &&
         (history.data.items.length === 0 ? (
