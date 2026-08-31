@@ -15,6 +15,7 @@ add_library(agent_core STATIC
     src/collector/MemoryCollector.cpp
     src/collector/DiskCollector.cpp
     src/collector/OsCollector.cpp
+    src/collector/ProcessCollector.cpp
 )
 
 target_include_directories(agent_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
@@ -26,7 +27,9 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 if (WIN32)
-    target_link_libraries(agent_core PRIVATE ws2_32)
+    # ws2_32 for the HTTP server socket, psapi for GetProcessMemoryInfo in the
+    # process collector.
+    target_link_libraries(agent_core PRIVATE ws2_32 psapi)
 endif()
 
 add_executable(agent
