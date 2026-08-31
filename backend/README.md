@@ -130,7 +130,13 @@ and Phase 4 is where that changes.
 
 An invalid value is rejected at startup — a non-numeric `SYSWATCH_PORT` or a
 `SYSWATCH_RETENTION_DAYS=forever` raises a `ValidationError` rather than
-silently falling back to the default.
+silently falling back to the default. `SYSWATCH_CORS_ORIGINS` is the one
+exception: because `NoDecode` turns off pydantic-settings' usual JSON parsing
+for this field, a JSON-array spelling like `SYSWATCH_CORS_ORIGINS=["http://x"]`
+is not rejected — it has no commas, so it is read as one literal origin string
+(`["http://x"]`, brackets and all) instead of failing to start. The symptom is
+the dashboard silently blocked by CORS with nothing in the logs pointing at
+why; the fix is always the comma-separated spelling above, never JSON.
 
 `SYSWATCH_DATABASE_URL` is read by both the application and Alembic. The value
 in `alembic.ini` is deliberately blank and has no effect, so migrations can
