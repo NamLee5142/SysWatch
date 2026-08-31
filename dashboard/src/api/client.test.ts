@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, NetworkError, getHosts, getLatestSnapshot, getSnapshotSeries, getStatus, listSnapshots } from './client'
+import {
+  ApiError,
+  NetworkError,
+  getHosts,
+  getLatestSnapshot,
+  getSnapshot,
+  getSnapshotSeries,
+  getStatus,
+  listSnapshots,
+} from './client'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -71,6 +80,17 @@ describe('API client', () => {
     })
   })
 
+  it('falls back to a generic message when the detail array has no usable msg field', async () => {
+    // Array.isArray(detail) is true here, unlike the not-JSON case below —
+    // this exercises the filter finding nothing, not the outer type check.
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ detail: [{ loc: ['query', 'metric'], type: 'literal_error' }] }, 422))
+
+    await expect(getSnapshotSeries({ metric: 'cpu' })).rejects.toMatchObject({
+      status: 422,
+      message: 'Request failed with status 422',
+    })
+  })
+
   it('falls back to a generic message when an error response is not JSON', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response('<html>Bad Gateway</html>', { status: 502 }))
 
@@ -99,6 +119,17 @@ describe('API client', () => {
     vi.mocked(fetch).mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError'))
 
     await expect(getHosts(controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('hits /snapshot, not /snapshots/latest, for the direct-from-agent read', async () => {
+    // getSnapshot() reads through the agent, unlike getLatestSnapshot()'s
+    // storage-backed /snapshots/latest — an easy pair to mix up since they
+    // return the same shape, which is exactly why this checks the URL.
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ collectedAt: '2026-08-25T10:00:00Z' }))
+
+    await getSnapshot()
+
+    expect(fetch).toHaveBeenCalledWith('/api/snapshot', expect.anything())
   })
 
   it('passes the abort signal through to fetch', async () => {

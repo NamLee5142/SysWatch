@@ -104,6 +104,28 @@ describe('HistoryPage', () => {
     expect(params).toMatchObject({ host: 'buildbox' })
   })
 
+  it('converts the Since and Until filters to ISO strings before requesting', async () => {
+    vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)]))
+    const user = userEvent.setup()
+
+    render(<HistoryPage />)
+    await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
+
+    // <input type="datetime-local"> gives local wall-clock time with no
+    // offset; the request must carry a real UTC ISO string, not that raw
+    // value passed through untouched.
+    await user.type(screen.getByLabelText('Since'), '2026-08-25T09:00')
+    await user.type(screen.getByLabelText('Until'), '2026-08-25T17:00')
+    await user.click(screen.getByRole('button', { name: 'Search' }))
+
+    await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(2))
+    const [params] = vi.mocked(listSnapshots).mock.calls[1]
+    expect(params).toMatchObject({
+      since: new Date('2026-08-25T09:00').toISOString(),
+      until: new Date('2026-08-25T17:00').toISOString(),
+    })
+  })
+
   it('resets to page 0 when a new filter is submitted', async () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf(Array.from({ length: 25 }, (_, i) => snapshotAt(i)), 100))
     const user = userEvent.setup()
