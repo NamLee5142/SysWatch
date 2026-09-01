@@ -91,6 +91,61 @@ std::string jsonFor(const SystemInfo &system) {
     return out.str();
 }
 
+std::string jsonFor(const ProcessEntry &process) {
+    std::ostringstream out;
+    out << "{"
+        << "\"pid\":" << process.pid << ","
+        << "\"name\":" << quoteJsonString(process.name) << ","
+        << "\"memoryMB\":" << process.memoryMB
+        << "}";
+    return out.str();
+}
+
+std::string jsonFor(const NetworkInterfaceInfo &nic) {
+    std::ostringstream out;
+    out << "{"
+        << "\"name\":" << quoteJsonString(nic.name) << ","
+        << "\"bytesSent\":" << nic.bytesSent << ","
+        << "\"bytesRecv\":" << nic.bytesRecv << ","
+        << "\"bytesSentPerSec\":" << nic.bytesSentPerSec << ","
+        << "\"bytesRecvPerSec\":" << nic.bytesRecvPerSec
+        << "}";
+    return out.str();
+}
+
+// The snapshot emitter had only object serializers; a process list and an
+// interface list are the first arrays on the wire.
+template <typename T>
+std::string jsonArray(const std::vector<T> &items) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < items.size(); ++i) {
+        if (i != 0) {
+            out << ',';
+        }
+        out << jsonFor(items[i]);
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string jsonFor(const ProcessInfo &processes) {
+    std::ostringstream out;
+    out << "{"
+        << "\"count\":" << processes.count << ","
+        << "\"top\":" << jsonArray(processes.top)
+        << "}";
+    return out.str();
+}
+
+std::string jsonFor(const NetworkInfo &network) {
+    std::ostringstream out;
+    out << "{"
+        << "\"interfaces\":" << jsonArray(network.interfaces)
+        << "}";
+    return out.str();
+}
+
 std::string snapshotToJson(const Snapshot &snapshot) {
     std::ostringstream out;
     out << "{"
@@ -98,7 +153,9 @@ std::string snapshotToJson(const Snapshot &snapshot) {
         << "\"cpuInfo\":" << jsonFor(snapshot.cpuInfo) << ","
         << "\"memoryInfo\":" << jsonFor(snapshot.memoryInfo) << ","
         << "\"diskInfo\":" << jsonFor(snapshot.diskInfo) << ","
-        << "\"systemInfo\":" << jsonFor(snapshot.systemInfo)
+        << "\"systemInfo\":" << jsonFor(snapshot.systemInfo) << ","
+        << "\"processInfo\":" << jsonFor(snapshot.processInfo) << ","
+        << "\"networkInfo\":" << jsonFor(snapshot.networkInfo)
         << "}";
     return out.str();
 }
