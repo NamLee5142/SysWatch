@@ -16,6 +16,7 @@ add_library(agent_core STATIC
     src/collector/DiskCollector.cpp
     src/collector/OsCollector.cpp
     src/collector/ProcessCollector.cpp
+    src/collector/NetworkCollector.cpp
 )
 
 target_include_directories(agent_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
@@ -28,8 +29,8 @@ endif()
 
 if (WIN32)
     # ws2_32 for the HTTP server socket, psapi for GetProcessMemoryInfo in the
-    # process collector.
-    target_link_libraries(agent_core PRIVATE ws2_32 psapi)
+    # process collector, iphlpapi for GetIfTable2 in the network collector.
+    target_link_libraries(agent_core PRIVATE ws2_32 psapi iphlpapi)
 endif()
 
 add_executable(agent
