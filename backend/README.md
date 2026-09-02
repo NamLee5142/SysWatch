@@ -91,8 +91,13 @@ Observed behaviour end to end:
 | Running, snapshot collected | `200` with live data |
 | Stopped with Ctrl+C | `503` |
 
-Note that `cpuInfo.usagePercent` is currently always `0.0` — it is a
-placeholder in the agent's `CPUCollector`, not a measurement.
+Verified against a real agent on Windows: `processInfo.count` tracks Task
+Manager's process count (within a handful, since processes come and go between
+the walk and the reading), `processInfo.top` is the ten heaviest by memory, and
+`networkInfo.interfaces[].bytes*PerSec` climb under a download and settle
+afterwards. `cpuInfo.usagePercent` moves under load, and
+`GET /snapshots/series?metric=processes` / `net_recv` return the expected
+`count` / `bytes_per_sec` units.
 
 ## Configuration
 
