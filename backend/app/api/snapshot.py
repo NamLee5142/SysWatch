@@ -22,6 +22,10 @@ def create_snapshot_service() -> SnapshotService:
 @router.get(
     "/snapshot",
     response_model=Snapshot,
+    # An agent built before Sprint 7 sends no processInfo/networkInfo; emitting
+    # them as explicit nulls would be the backend inventing fields the agent
+    # never reported. Absent stays absent, an empty interfaces list stays [].
+    response_model_exclude_none=True,
     summary="Fetch the latest snapshot from the agent",
     responses={
         404: {"description": "No snapshot available yet"},

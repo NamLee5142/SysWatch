@@ -25,6 +25,9 @@ def create_snapshot_store() -> SnapshotStore:
 @router.get(
     "/snapshots",
     response_model=SnapshotPage,
+    # See GET /snapshot: rows stored before Sprint 7 have no process or network
+    # data, and a null block is noise the client would have to special-case.
+    response_model_exclude_none=True,
     summary="List stored snapshots, newest first",
     responses={422: {"description": "Invalid time window or paging values"}},
 )
@@ -96,6 +99,7 @@ def snapshot_series(
 @router.get(
     "/snapshots/latest",
     response_model=Snapshot,
+    response_model_exclude_none=True,
     summary="Fetch the most recently stored snapshot",
     responses={404: {"description": "Nothing stored yet"}},
 )

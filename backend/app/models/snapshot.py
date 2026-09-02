@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -28,6 +28,33 @@ class SystemInfo(BaseModel):
     hostName: str
 
 
+class ProcessEntry(BaseModel):
+    pid: int
+    name: str
+    memoryMB: int
+
+
+class ProcessInfo(BaseModel):
+    # Total running processes, from the agent's full process walk — not the
+    # length of `top`, which is only the heaviest few.
+    count: int
+    top: list[ProcessEntry]
+
+
+class NetworkInterface(BaseModel):
+    name: str
+    # Cumulative octet counters straight from the adapter.
+    bytesSent: int
+    bytesRecv: int
+    # Per-second rates the agent derives from the delta between its own samples.
+    bytesSentPerSec: float
+    bytesRecvPerSec: float
+
+
+class NetworkInfo(BaseModel):
+    interfaces: list[NetworkInterface]
+
+
 class Snapshot(BaseModel):
     # Stamped by the agent when the metrics were collected, not when the backend
     # fetched them. Serialized as ISO-8601 UTC, e.g. 2026-08-12T11:15:27Z.
@@ -36,6 +63,11 @@ class Snapshot(BaseModel):
     memoryInfo: MemoryInfo
     diskInfo: DiskInfo
     systemInfo: SystemInfo
+    # Optional for one release: an agent built before Sprint 7 sends neither
+    # block, and rejecting its payload would turn every poll into a 502. The
+    # same compatibility window collectedAt had in Sprint 5.
+    processInfo: Optional[ProcessInfo] = None
+    networkInfo: Optional[NetworkInfo] = None
 
     @classmethod
     def from_payload(cls, payload: dict) -> "Snapshot":
