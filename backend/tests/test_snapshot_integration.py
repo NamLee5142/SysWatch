@@ -49,6 +49,27 @@ AGENT_PAYLOAD = {
     "systemInfo": {"name": "Windows", "version": "11", "hostName": "devbox"},
 }
 
+# What a Sprint 7 agent sends: the same payload plus the process and network
+# blocks.
+AGENT_PAYLOAD_WITH_PROCESS_AND_NETWORK = {
+    **AGENT_PAYLOAD,
+    "processInfo": {
+        "count": 240,
+        "top": [{"pid": 1234, "name": "chrome.exe", "memoryMB": 512}],
+    },
+    "networkInfo": {
+        "interfaces": [
+            {
+                "name": "Wi-Fi",
+                "bytesSent": 1000,
+                "bytesRecv": 2000,
+                "bytesSentPerSec": 30.0,
+                "bytesRecvPerSec": 90.0,
+            }
+        ],
+    },
+}
+
 
 @respx.mock
 def test_agent_snapshot_reaches_the_client_unchanged():
@@ -178,6 +199,40 @@ def test_polling_the_same_collection_repeatedly_stores_one_row():
     # The agent keeps returning the same collection, so the unique constraint
     # collapses every repeat.
     assert store.count() == 1
+
+
+@respx.mock
+def test_process_and_network_data_flows_through_to_the_history_endpoints():
+    respx.get(AGENT_SNAPSHOT_URL).respond(200, json=AGENT_PAYLOAD_WITH_PROCESS_AND_NETWORK)
+    store = SnapshotStore()
+
+    run_poller_until(store, target_rows=1)
+
+    latest = client.get("/snapshots/latest").json()
+    assert latest["processInfo"]["count"] == 240
+    assert latest["processInfo"]["top"][0]["name"] == "chrome.exe"
+    assert latest["networkInfo"]["interfaces"][0]["bytesRecvPerSec"] == 90.0
+
+    processes = client.get("/snapshots/series", params={"metric": "processes", "bucket": "raw"}).json()
+    assert processes["unit"] == "count"
+    assert processes["points"][0]["value"] == 240.0
+
+    received = client.get("/snapshots/series", params={"metric": "net_recv", "bucket": "raw"}).json()
+    assert received["unit"] == "bytes_per_sec"
+    assert received["points"][0]["value"] == 90.0
+
+
+@respx.mock
+def test_a_pre_sprint_7_agent_payload_still_flows_through():
+    respx.get(AGENT_SNAPSHOT_URL).respond(200, json=AGENT_PAYLOAD)
+    store = SnapshotStore()
+
+    run_poller_until(store, target_rows=1)
+
+    latest = client.get("/snapshots/latest").json()
+    # No block invented where the agent reported none.
+    assert "processInfo" not in latest
+    assert "networkInfo" not in latest
 
 
 @respx.mock
