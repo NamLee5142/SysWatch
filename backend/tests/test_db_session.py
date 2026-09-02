@@ -64,6 +64,16 @@ def test_sqlite_runs_in_wal_mode(tmp_path):
     assert mode.lower() == "wal"
 
 
+def test_sqlite_enforces_foreign_keys(tmp_path):
+    db_session.init_engine(sqlite_url(tmp_path))
+
+    with db_session.get_session() as session:
+        enabled = session.execute(text("PRAGMA foreign_keys")).scalar_one()
+
+    # Off by default in SQLite; the alerts.rule_id ON DELETE SET NULL needs it on.
+    assert enabled == 1
+
+
 def test_in_memory_url_shares_one_connection():
     db_session.init_engine("sqlite://")
 
