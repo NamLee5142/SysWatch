@@ -6,6 +6,7 @@ import { DiskPage } from './pages/DiskPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { MemoryPage } from './pages/MemoryPage'
 import { OverviewPage } from './pages/OverviewPage'
+import { ProcessPage } from './pages/ProcessPage'
 import { SystemPage } from './pages/SystemPage'
 
 // Kept apart from App so tests can drive it inside a MemoryRouter and land on
@@ -19,6 +20,7 @@ export function AppRoutes() {
         <Route path="cpu" element={<CpuPage />} />
         <Route path="memory" element={<MemoryPage />} />
         <Route path="disk" element={<DiskPage />} />
+        <Route path="processes" element={<ProcessPage />} />
         <Route path="system" element={<SystemPage />} />
         <Route path="history" element={<HistoryPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
