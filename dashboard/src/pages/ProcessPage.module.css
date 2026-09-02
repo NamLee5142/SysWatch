@@ -1,0 +1,83 @@
+/* Processes page: a headline count, a top-by-memory table, then a trend chart.
+   The .page / .summary / .chartSection rules mirror MetricPage.module.css; the
+   table rules mirror SystemPage.module.css — the same verbatim-duplication
+   trade-off those two already make rather than a shared component. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+section.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.section h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.chartSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.chartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chartHeader h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-strong);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.placeholder {
+  color: var(--text);
+  font-size: 14px;
+}

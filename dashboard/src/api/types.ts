@@ -27,12 +27,41 @@ export interface SystemInfo {
   hostName: string
 }
 
+export interface ProcessEntry {
+  pid: number
+  name: string
+  memoryMB: number
+}
+
+export interface ProcessInfo {
+  // Total running processes — not top.length, which is only the heaviest few.
+  count: number
+  top: ProcessEntry[]
+}
+
+export interface NetworkInterface {
+  name: string
+  bytesSent: number
+  bytesRecv: number
+  bytesSentPerSec: number
+  bytesRecvPerSec: number
+}
+
+export interface NetworkInfo {
+  interfaces: NetworkInterface[]
+}
+
 export interface Snapshot {
   collectedAt: string
   cpuInfo: CPUInfo
   memoryInfo: MemoryInfo
   diskInfo: DiskInfo
   systemInfo: SystemInfo
+  // Absent from a snapshot collected by an agent built before Sprint 7, and
+  // omitted from the response rather than sent as null (the backend uses
+  // response_model_exclude_none).
+  processInfo?: ProcessInfo
+  networkInfo?: NetworkInfo
 }
 
 export interface SnapshotPage {
@@ -40,8 +69,13 @@ export interface SnapshotPage {
   count: number
 }
 
-export type Metric = 'cpu' | 'memory' | 'disk'
+export type Metric = 'cpu' | 'memory' | 'disk' | 'processes' | 'net_sent' | 'net_recv'
 export type Bucket = 'raw' | 'minute' | 'hour' | 'day'
+
+// What a series' values are measured in. cpu/memory/disk are 'percent' on a
+// 0-100 axis; the process and network metrics are not, so the chart reads the
+// axis from here rather than assuming a percentage.
+export type Unit = 'percent' | 'count' | 'bytes_per_sec'
 
 export interface SeriesPoint {
   t: string
@@ -51,6 +85,7 @@ export interface SeriesPoint {
 export interface Series {
   metric: Metric
   bucket: Bucket
+  unit: Unit
   points: SeriesPoint[]
 }
 

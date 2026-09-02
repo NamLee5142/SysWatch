@@ -9,7 +9,7 @@ import { StatusDot } from '../components/StatusDot'
 import { usePolling } from '../hooks/usePolling'
 import { AGENT_STATE_LABEL } from '../lib/agentState'
 import { POLL_INTERVAL_MS } from '../lib/constants'
-import { formatGB, formatMemoryMB } from '../lib/format'
+import { formatBytesPerSec, formatGB, formatMemoryMB } from '../lib/format'
 import styles from './OverviewPage.module.css'
 
 export function OverviewPage() {
@@ -28,12 +28,14 @@ export function OverviewPage() {
         {snapshot.error ? (
           <SnapshotErrorMessage error={snapshot.error} className={styles.placeholder} />
         ) : (
-          // Seven tiles — the same count and layout as the real grid below —
+          // Nine tiles — the same count and layout as the real grid below —
           // so nothing visibly shifts once data arrives. One status
           // announcement for the whole grid, not one per shimmering tile.
           <div className={styles.grid} role="status">
             <span className="visually-hidden">Loading Overview</span>
             <GaugeCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
             <StatCardSkeleton />
             <StatCardSkeleton />
             <StatCardSkeleton />
@@ -46,8 +48,13 @@ export function OverviewPage() {
     )
   }
 
-  const { cpuInfo, memoryInfo, diskInfo, systemInfo, collectedAt } = snapshot.data
+  const { cpuInfo, memoryInfo, diskInfo, systemInfo, collectedAt, processInfo, networkInfo } = snapshot.data
   const diskUsedGB = diskInfo.totalGB - diskInfo.freeGB
+
+  // Absent from a pre-Sprint-7 agent's snapshot — the tile then shows a dash
+  // rather than disappearing, so the grid keeps its shape.
+  const netRecv = networkInfo?.interfaces.reduce((total, nic) => total + nic.bytesRecvPerSec, 0)
+  const netSent = networkInfo?.interfaces.reduce((total, nic) => total + nic.bytesSentPerSec, 0)
 
   return (
     <div className={styles.page}>
@@ -62,6 +69,14 @@ export function OverviewPage() {
         />
 
         <StatCard label="Disk" value={`${formatGB(diskUsedGB)} used`} hint={`${formatGB(diskInfo.freeGB)} free`} />
+
+        <StatCard label="Processes" value={processInfo?.count ?? '—'} hint="running" />
+
+        <StatCard
+          label="Network"
+          value={netRecv !== undefined ? `${formatBytesPerSec(netRecv)} recv` : '—'}
+          hint={netSent !== undefined ? `${formatBytesPerSec(netSent)} sent` : undefined}
+        />
 
         <StatCard label="Hostname" value={systemInfo.hostName} />
 

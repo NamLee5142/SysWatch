@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatGB, formatMemoryMB, formatRelativeTime, percentOf } from './format'
+import { formatBytesPerSec, formatGB, formatMemoryMB, formatRelativeTime, percentOf } from './format'
+
+// The module joins a number to its unit with a non-breaking space; spelled out
+// here so the expectations are unambiguous.
+const NBSP = ' '
 
 describe('formatMemoryMB', () => {
   it('renders whole MB below 1 GB', () => {
@@ -35,6 +39,32 @@ describe('formatGB', () => {
 
   it('renders zero explicitly rather than an empty string', () => {
     expect(formatGB(0)).toBe('0 GB')
+  })
+})
+
+describe('formatBytesPerSec', () => {
+  it('renders whole B/s below 1 KB/s', () => {
+    expect(formatBytesPerSec(512)).toBe(`512${NBSP}B/s`)
+  })
+
+  it('switches to KB/s with one decimal at exactly 1024 B/s', () => {
+    expect(formatBytesPerSec(1024)).toBe(`1.0${NBSP}KB/s`)
+  })
+
+  it('renders MB/s above 1024 KB/s', () => {
+    expect(formatBytesPerSec(5 * 1024 * 1024)).toBe(`5.0${NBSP}MB/s`)
+  })
+
+  it('renders GB/s at the top of the scale', () => {
+    expect(formatBytesPerSec(2 * 1024 * 1024 * 1024)).toBe(`2.0${NBSP}GB/s`)
+  })
+
+  it('renders an idle interface as 0 B/s, not an empty string', () => {
+    expect(formatBytesPerSec(0)).toBe(`0${NBSP}B/s`)
+  })
+
+  it('clamps a negative rate to zero', () => {
+    expect(formatBytesPerSec(-1)).toBe(`0${NBSP}B/s`)
   })
 })
 

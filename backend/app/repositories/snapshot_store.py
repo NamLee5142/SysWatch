@@ -42,7 +42,11 @@ class SeriesPoint:
 
 
 def metric_expression(metric):
-    """SQL for one metric, as a percentage so every series shares a 0-100 axis.
+    """SQL for one metric's per-row value.
+
+    cpu, memory and disk come back as a percentage on one 0-100 axis; processes
+    and network come back in their own units (a count, bytes per second) — see
+    METRIC_UNIT in app.models.snapshot.
 
     nullif() guards the divisions: SQLite would quietly return NULL on a zero
     total, but PostgreSQL raises, and this has to survive that move.
@@ -54,6 +58,12 @@ def metric_expression(metric):
     if metric == "disk":
         used_gb = SnapshotRecord.disk_total_gb - SnapshotRecord.disk_free_gb
         return 100.0 * used_gb / func.nullif(SnapshotRecord.disk_total_gb, 0)
+    if metric == "processes":
+        return SnapshotRecord.process_count
+    if metric == "net_sent":
+        return SnapshotRecord.net_bytes_sent_per_sec
+    if metric == "net_recv":
+        return SnapshotRecord.net_bytes_recv_per_sec
 
     raise ValueError(f"Unknown metric: {metric}")
 
@@ -201,9 +211,10 @@ class SnapshotStore:
         return [
             SeriesPoint(at=self._point_time(at, bucket), value=float(value))
             for at, value in rows
-            # A NULL average means every row in the bucket had a zero total, so
-            # there is no percentage to plot. Dropping the point is honest;
-            # plotting a zero would read as an idle machine.
+            # A NULL value has nothing to plot: for cpu/memory/disk every row in
+            # the bucket had a zero total, for processes/network none of them
+            # carried the metric (a pre-Sprint-7 row, or an older agent).
+            # Plotting a zero would misread as an idle machine.
             if value is not None
         ]
 
@@ -250,6 +261,9 @@ class SnapshotStore:
         )
 
     def _to_record(self, snapshot):
+        processes = snapshot.processInfo
+        network = snapshot.networkInfo
+
         return SnapshotRecord(
             host_name=snapshot.systemInfo.hostName,
             collected_at=to_storage_time(snapshot.collectedAt),
@@ -261,6 +275,31 @@ class SnapshotStore:
             disk_free_gb=snapshot.diskInfo.freeGB,
             os_name=snapshot.systemInfo.name,
             os_version=snapshot.systemInfo.version,
+            # Left NULL when the agent sent no block, so a pre-Sprint-7 agent
+            # stores exactly what it did before.
+            process_count=processes.count if processes is not None else None,
+            process_top=(
+                [entry.model_dump() for entry in processes.top]
+                if processes is not None
+                else None
+            ),
+            # The series endpoint charts one number per snapshot, so the
+            # per-interface rates are summed to a machine total here.
+            net_bytes_sent_per_sec=(
+                sum(nic.bytesSentPerSec for nic in network.interfaces)
+                if network is not None
+                else None
+            ),
+            net_bytes_recv_per_sec=(
+                sum(nic.bytesRecvPerSec for nic in network.interfaces)
+                if network is not None
+                else None
+            ),
+            network_interfaces=(
+                [nic.model_dump() for nic in network.interfaces]
+                if network is not None
+                else None
+            ),
         )
 
     def _hydrate(self, record):

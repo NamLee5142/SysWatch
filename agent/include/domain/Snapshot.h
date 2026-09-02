@@ -6,6 +6,8 @@
 #include "MemoryInfo.h"
 #include "DiskInfo.h"
 #include "SystemInfo.h"
+#include "ProcessInfo.h"
+#include "NetworkInfo.h"
 
 class Snapshot {
 public:
@@ -19,4 +21,6 @@ public:
     MemoryInfo memoryInfo;
     DiskInfo diskInfo;
     SystemInfo systemInfo;
+    ProcessInfo processInfo;
+    NetworkInfo networkInfo;
 };

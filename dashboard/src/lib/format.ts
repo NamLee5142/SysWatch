@@ -17,6 +17,32 @@ export function formatGB(gb: number): string {
   return `${Math.round(gb)}${NBSP}GB`
 }
 
+/** Network throughput from the backend (NetworkInterface.bytes*PerSec, and the
+ *  net_sent / net_recv series). Steps through B/s, KB/s, MB/s, GB/s on 1024
+ *  boundaries — the same binary convention formatMemoryMB uses, so the app is
+ *  consistent with itself even though networking tools are split on 1000 vs
+ *  1024. A negative rate (never sent by the agent, but cheap to guard) renders
+ *  as 0. */
+export function formatBytesPerSec(bytesPerSec: number): string {
+  const value = bytesPerSec > 0 ? bytesPerSec : 0
+
+  if (value < 1024) {
+    return `${Math.round(value)}${NBSP}B/s`
+  }
+
+  const kb = value / 1024
+  if (kb < 1024) {
+    return `${kb.toFixed(1)}${NBSP}KB/s`
+  }
+
+  const mb = kb / 1024
+  if (mb < 1024) {
+    return `${mb.toFixed(1)}${NBSP}MB/s`
+  }
+
+  return `${(mb / 1024).toFixed(1)}${NBSP}GB/s`
+}
+
 /** A raw 0-100 number for feeding a Gauge, not a display string — the memory
  *  and disk pages' headline percentage, computed the same way the backend's
  *  own metric_expression() does it. Guarded against a zero or negative total

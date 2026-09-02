@@ -3,7 +3,15 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models.snapshot import Bucket, Metric, Series, SeriesPoint, Snapshot, SnapshotPage
+from app.models.snapshot import (
+    METRIC_UNIT,
+    Bucket,
+    Metric,
+    Series,
+    SeriesPoint,
+    Snapshot,
+    SnapshotPage,
+)
 from app.repositories import SnapshotStore
 from app.repositories.snapshot_store import to_storage_time
 
@@ -25,6 +33,9 @@ def create_snapshot_store() -> SnapshotStore:
 @router.get(
     "/snapshots",
     response_model=SnapshotPage,
+    # See GET /snapshot: rows stored before Sprint 7 have no process or network
+    # data, and a null block is noise the client would have to special-case.
+    response_model_exclude_none=True,
     summary="List stored snapshots, newest first",
     responses={422: {"description": "Invalid time window or paging values"}},
 )
@@ -87,6 +98,7 @@ def snapshot_series(
     return Series(
         metric=metric,
         bucket=bucket,
+        unit=METRIC_UNIT[metric],
         points=[SeriesPoint.from_point(point) for point in points],
     )
 
@@ -96,6 +108,7 @@ def snapshot_series(
 @router.get(
     "/snapshots/latest",
     response_model=Snapshot,
+    response_model_exclude_none=True,
     summary="Fetch the most recently stored snapshot",
     responses={404: {"description": "Nothing stored yet"}},
 )

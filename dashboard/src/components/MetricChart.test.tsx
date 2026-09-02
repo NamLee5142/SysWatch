@@ -91,6 +91,33 @@ describe('MetricChart', () => {
     }
   })
 
+  it('drops the fixed percent axis for a bytes-per-second series', () => {
+    const bytes: SeriesPoint[] = [
+      { t: '2026-08-25T10:00:00Z', value: 2048 },
+      { t: '2026-08-25T11:00:00Z', value: 4096 },
+    ]
+
+    render(<MetricChart points={bytes} unit="bytes_per_sec" ariaLabel="Network throughput over time" />)
+
+    // The line still draws, but no axis tick is a percentage any more.
+    expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument()
+    expect(screen.queryByText('25%')).not.toBeInTheDocument()
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
+  })
+
+  it('drops the fixed percent axis for a count series', () => {
+    const counts: SeriesPoint[] = [
+      { t: '2026-08-25T10:00:00Z', value: 100 },
+      { t: '2026-08-25T11:00:00Z', value: 140 },
+    ]
+
+    render(<MetricChart points={counts} unit="count" ariaLabel="Process count over time" />)
+
+    expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument()
+    expect(screen.queryByText('25%')).not.toBeInTheDocument()
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
+  })
+
   it('shows a loading skeleton instead of the chart or the empty state when loading', () => {
     render(<MetricChart points={[]} ariaLabel="CPU usage over time" loading />)
 

@@ -37,18 +37,34 @@ def save(
     total_mb=16384,
     free_gb=112,
     total_gb=512,
+    process_count=None,
+    net_recv=None,
 ):
-    store.save(
-        Snapshot.from_payload(
-            {
-                "collectedAt": (BASE_TIME + timedelta(minutes=minutes)).isoformat(),
-                "cpuInfo": {"coreCount": 8, "usagePercent": cpu},
-                "memoryInfo": {"totalMB": total_mb, "usedMB": used_mb},
-                "diskInfo": {"totalGB": total_gb, "freeGB": free_gb},
-                "systemInfo": {"name": "Windows", "version": "11", "hostName": host_name},
-            }
-        )
-    )
+    payload = {
+        "collectedAt": (BASE_TIME + timedelta(minutes=minutes)).isoformat(),
+        "cpuInfo": {"coreCount": 8, "usagePercent": cpu},
+        "memoryInfo": {"totalMB": total_mb, "usedMB": used_mb},
+        "diskInfo": {"totalGB": total_gb, "freeGB": free_gb},
+        "systemInfo": {"name": "Windows", "version": "11", "hostName": host_name},
+    }
+
+    if process_count is not None:
+        payload["processInfo"] = {"count": process_count, "top": []}
+
+    if net_recv is not None:
+        payload["networkInfo"] = {
+            "interfaces": [
+                {
+                    "name": "Wi-Fi",
+                    "bytesSent": 0,
+                    "bytesRecv": 0,
+                    "bytesSentPerSec": 0.0,
+                    "bytesRecvPerSec": net_recv,
+                }
+            ],
+        }
+
+    store.save(Snapshot.from_payload(payload))
 
 
 def series(**params):
@@ -63,7 +79,7 @@ def values(**params):
 def test_no_data_returns_an_empty_series(store):
     body = series(bucket="hour").json()
 
-    assert body == {"metric": "cpu", "bucket": "hour", "points": []}
+    assert body == {"metric": "cpu", "bucket": "hour", "unit": "percent", "points": []}
 
 
 def test_raw_bucket_returns_every_sample(store):
@@ -119,6 +135,31 @@ def test_series_runs_opposite_to_the_history_page(store):
     # A chart reads left to right; a page of history reads newest first.
     # Getting these the same way round is what silently flips an axis.
     assert chart == list(reversed(page))
+
+
+def test_process_series_reports_a_count_unit(store):
+    save(store, minutes=0, process_count=100)
+    save(store, minutes=20, process_count=140)
+
+    body = series(metric="processes", bucket="hour").json()
+
+    assert body["unit"] == "count"
+    assert [point["value"] for point in body["points"]] == [120.0]
+
+
+def test_network_series_reports_a_bytes_per_sec_unit(store):
+    save(store, minutes=0, net_recv=2048.0)
+
+    body = series(metric="net_recv", bucket="raw").json()
+
+    assert body["unit"] == "bytes_per_sec"
+    assert [point["value"] for point in body["points"]] == [2048.0]
+
+
+def test_a_percentage_metric_still_reports_a_percent_unit(store):
+    save(store)
+
+    assert series(metric="cpu", bucket="raw").json()["unit"] == "percent"
 
 
 def test_memory_is_reported_as_a_percentage(store):

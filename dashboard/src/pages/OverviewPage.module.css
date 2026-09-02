@@ -7,8 +7,9 @@
 .grid {
   display: grid;
   /* auto-fit rather than a fixed column count: the tile count here is
-     content-driven (CPU, memory, disk, hostname, OS, last update,
-     connection), not a number worth hardcoding into the layout. */
+     content-driven (CPU, memory, disk, processes, network, hostname, OS,
+     last update, connection), not a number worth hardcoding into the
+     layout. */
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
 }

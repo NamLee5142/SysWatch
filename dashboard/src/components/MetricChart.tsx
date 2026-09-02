@@ -1,15 +1,17 @@
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { TooltipContentProps } from 'recharts'
 
-import type { SeriesPoint } from '../api/types'
+import type { SeriesPoint, Unit } from '../api/types'
+import { formatBytesPerSec } from '../lib/format'
 import styles from './MetricChart.module.css'
 import { Skeleton } from './Skeleton'
 
 interface MetricChartProps {
   points: SeriesPoint[]
-  // Every metric this backend serves is a percentage (see the metric_expression
-  // note in backend/app/repositories/snapshot_store.py), which is what lets a
-  // single 0-100 axis serve CPU, memory and disk without a per-page variant.
+  // How points[].value is measured — see the Series.unit field the backend
+  // sends. 'percent' keeps a fixed 0-100 axis so CPU, memory and disk read
+  // identically; 'count' and 'bytes_per_sec' get an auto-scaled axis.
+  unit?: Unit
   color?: string
   ariaLabel: string
   // True only before the series has ever resolved — see the caller-side note
@@ -17,7 +19,48 @@ interface MetricChartProps {
   loading?: boolean
 }
 
-function formatTick(iso: string): string {
+interface AxisFormat {
+  domain: [number | string, number | string]
+  // Only 'percent' pins explicit ticks; the others let Recharts choose.
+  ticks?: number[]
+  interval?: number
+  width: number
+  formatTick: (value: number) => string
+  formatValue: (value: number) => string
+}
+
+function axisFor(unit: Unit): AxisFormat {
+  if (unit === 'bytes_per_sec') {
+    return {
+      domain: [0, 'auto'],
+      width: 68,
+      formatTick: formatBytesPerSec,
+      formatValue: formatBytesPerSec,
+    }
+  }
+
+  if (unit === 'count') {
+    const asInteger = (value: number) => String(Math.round(value))
+    return {
+      domain: [0, 'auto'],
+      width: 48,
+      formatTick: asInteger,
+      formatValue: asInteger,
+    }
+  }
+
+  // percent
+  return {
+    domain: [0, 100],
+    ticks: [0, 25, 50, 75, 100],
+    interval: 0,
+    width: 40,
+    formatTick: (value) => `${value}%`,
+    formatValue: (value) => `${value.toFixed(1)}%`,
+  }
+}
+
+function formatTickLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
@@ -25,7 +68,12 @@ function formatTooltipLabel(iso: string): string {
   return new Date(iso).toLocaleString()
 }
 
-function ChartTooltip({ active, payload, label }: TooltipContentProps) {
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  formatValue,
+}: TooltipContentProps & { formatValue: (value: number) => string }) {
   if (!active || !payload || payload.length === 0 || typeof label !== 'string') {
     return null
   }
@@ -35,14 +83,21 @@ function ChartTooltip({ active, payload, label }: TooltipContentProps) {
   return (
     <div className={styles.tooltip}>
       <div>{formatTooltipLabel(label)}</div>
-      <div>{typeof value === 'number' ? `${value.toFixed(1)}%` : '—'}</div>
+      <div>{typeof value === 'number' ? formatValue(value) : '—'}</div>
     </div>
   )
 }
 
-/** A percentage-over-time line, shared by the CPU, Memory and Disk trend
- *  charts so their axes, tooltip and empty state read identically. */
-export function MetricChart({ points, color = 'var(--accent)', ariaLabel, loading = false }: MetricChartProps) {
+/** A value-over-time line shared by every trend chart. Percentage metrics
+ *  (CPU, memory, disk) share one fixed 0-100 axis; process count and network
+ *  throughput scale their own axis and format their own ticks. */
+export function MetricChart({
+  points,
+  unit = 'percent',
+  color = 'var(--accent)',
+  ariaLabel,
+  loading = false,
+}: MetricChartProps) {
   // Distinct from the empty state below: a first load and a genuinely empty
   // query used to render the same "No data for this range." message, which
   // is misleading while a fetch is still in flight — that is not yet a
@@ -66,29 +121,28 @@ export function MetricChart({ points, color = 'var(--accent)', ariaLabel, loadin
     )
   }
 
+  const axis = axisFor(unit)
+
   return (
     <div className={styles.chart} role="img" aria-label={ariaLabel}>
       <ResponsiveContainer width="100%" height="100%" minHeight={220}>
         <LineChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-          <XAxis dataKey="t" tickFormatter={formatTick} stroke="var(--text)" tick={{ fontSize: 12 }} />
-          {/* Explicit ticks rather than Recharts' auto count: at typical card
-              heights its heuristic can collapse to a single "100%" tick,
-              which is a worse axis than a fixed, always-consistent one. */}
+          <XAxis dataKey="t" tickFormatter={formatTickLabel} stroke="var(--text)" tick={{ fontSize: 12 }} />
+          {/* For 'percent', explicit ticks rather than Recharts' auto count: at
+              typical card heights its heuristic can collapse to a single "100%"
+              tick, which is a worse axis than a fixed, always-consistent one.
+              interval={0} is what actually forces all five to render. */}
           <YAxis
-            domain={[0, 100]}
-            ticks={[0, 25, 50, 75, 100]}
-            // Recharts' default overlap-avoidance ("preserveEnd") can still
-            // collapse an explicit `ticks` list down to just the last one at
-            // typical card heights; interval={0} is what actually forces all
-            // five to render.
-            interval={0}
-            tickFormatter={(tick: number) => `${tick}%`}
+            domain={axis.domain}
+            ticks={axis.ticks}
+            interval={axis.interval}
+            tickFormatter={axis.formatTick}
             stroke="var(--text)"
             tick={{ fontSize: 12 }}
-            width={40}
+            width={axis.width}
           />
-          <Tooltip content={ChartTooltip} />
+          <Tooltip content={(props) => <ChartTooltip {...props} formatValue={axis.formatValue} />} />
           <Line type="monotone" dataKey="value" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
