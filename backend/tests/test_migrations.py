@@ -41,6 +41,11 @@ def test_upgrade_creates_the_snapshots_schema(alembic_config):
         "disk_free_gb",
         "os_name",
         "os_version",
+        "process_count",
+        "net_bytes_sent_per_sec",
+        "net_bytes_recv_per_sec",
+        "process_top",
+        "network_interfaces",
     }
 
     assert [i["name"] for i in inspector.get_indexes("snapshots")] == ["ix_snapshots_collected_at"]
