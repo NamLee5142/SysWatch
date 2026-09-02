@@ -121,4 +121,9 @@ def test_table_has_expected_columns(session):
         "disk_free_gb",
         "os_name",
         "os_version",
+        "process_count",
+        "net_bytes_sent_per_sec",
+        "net_bytes_recv_per_sec",
+        "process_top",
+        "network_interfaces",
     }

@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Any, Optional
 
-from sqlalchemy import DateTime, Float, Index, Integer, MetaData, String, UniqueConstraint
+from sqlalchemy import DateTime, Float, Index, Integer, JSON, MetaData, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Explicit names for every constraint and index. SQLite cannot ALTER a
@@ -43,6 +44,16 @@ class SnapshotRecord(Base):
     # genuinely changes over time, so it is a property of the snapshot.
     os_name: Mapped[str] = mapped_column(String(255), nullable=False)
     os_version: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Process and network metrics, all nullable: rows written before Sprint 7
+    # have none, and an agent built before it sends none. The three scalars are
+    # aggregates that /snapshots/series can bucket; the two JSON columns are
+    # point-in-time detail, read only from the latest row.
+    process_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    net_bytes_sent_per_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    net_bytes_recv_per_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    process_top: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    network_interfaces: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         # Makes the poller idempotent: re-reading the agent's latest snapshot

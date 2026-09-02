@@ -99,6 +99,18 @@ class Snapshot(BaseModel):
                 version=record.os_version,
                 hostName=record.host_name,
             ),
+            # NULL on every row written before Sprint 7; None then stays None
+            # and response_model_exclude_none keeps it off the wire.
+            processInfo=(
+                ProcessInfo(count=record.process_count, top=record.process_top or [])
+                if record.process_count is not None
+                else None
+            ),
+            networkInfo=(
+                NetworkInfo(interfaces=record.network_interfaces)
+                if record.network_interfaces is not None
+                else None
+            ),
         )
 
 

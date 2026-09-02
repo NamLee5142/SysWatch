@@ -250,6 +250,9 @@ class SnapshotStore:
         )
 
     def _to_record(self, snapshot):
+        processes = snapshot.processInfo
+        network = snapshot.networkInfo
+
         return SnapshotRecord(
             host_name=snapshot.systemInfo.hostName,
             collected_at=to_storage_time(snapshot.collectedAt),
@@ -261,6 +264,31 @@ class SnapshotStore:
             disk_free_gb=snapshot.diskInfo.freeGB,
             os_name=snapshot.systemInfo.name,
             os_version=snapshot.systemInfo.version,
+            # Left NULL when the agent sent no block, so a pre-Sprint-7 agent
+            # stores exactly what it did before.
+            process_count=processes.count if processes is not None else None,
+            process_top=(
+                [entry.model_dump() for entry in processes.top]
+                if processes is not None
+                else None
+            ),
+            # The series endpoint charts one number per snapshot, so the
+            # per-interface rates are summed to a machine total here.
+            net_bytes_sent_per_sec=(
+                sum(nic.bytesSentPerSec for nic in network.interfaces)
+                if network is not None
+                else None
+            ),
+            net_bytes_recv_per_sec=(
+                sum(nic.bytesRecvPerSec for nic in network.interfaces)
+                if network is not None
+                else None
+            ),
+            network_interfaces=(
+                [nic.model_dump() for nic in network.interfaces]
+                if network is not None
+                else None
+            ),
         )
 
     def _hydrate(self, record):
