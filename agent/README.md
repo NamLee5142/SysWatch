@@ -1,0 +1,134 @@
+# SysWatch Agent
+
+Native C++ monitoring agent. Collects hardware and OS metrics on a fixed
+interval and serves the most recent reading over HTTP for the
+[backend](../backend/README.md) to poll.
+
+```text
+Windows APIs  ->  collectors  ->  Snapshot  ->  GET /snapshot  ->  backend
+```
+
+The agent is the only component that touches the operating system. Every number
+the backend and dashboard show originates in a collector here.
+
+## Requirements
+
+- A C++17 compiler. Verified with MinGW-w64 (`C:/mingw64`) and Ninja.
+- CMake 3.15 or newer.
+- Windows: the collectors are implemented against the Win32 API. On other
+  platforms they compile but return empty readings.
+
+## Building
+
+```bash
+cd agent
+cmake -S . -B build -G Ninja
+cmake --build build
+```
+
+`agent_core` is a static library holding the collectors, the scheduler and the
+HTTP server; `agent.exe` is a thin entry point over it. Each test is its own
+executable linked against `agent_core`.
+
+## Running
+
+```bash
+PATH="/c/mingw64/bin:$PATH" ./build/agent.exe     # Git Bash
+```
+
+Listens on `127.0.0.1:8080`, collects every 2 seconds, and serves `/snapshot`
+until it receives `SIGINT` (Ctrl+C) or `SIGTERM`.
+
+**The MinGW runtime must come from the compiling toolchain.** `agent.exe` links
+`libstdc++-6.dll`, `libgcc_s_seh-1.dll` and `libwinpthread-1.dll` dynamically;
+Git Bash ships older copies in `/mingw64/bin` that shadow the real ones, and the
+process then exits 127 with no message. Putting the compiler's `bin` first fixes
+it.
+
+## Testing
+
+Each `*_tests` target is a standalone assert-based program that exits non-zero
+on failure. Run them from `build/` with the toolchain on `PATH`:
+
+```bash
+cd build
+for t in *_tests.exe; do ./"$t" || echo "FAILED: $t"; done
+```
+
+The collector tests read the real machine, so they assert ranges and invariants
+(a non-zero process count, rates that are finite and non-negative, a top list
+bounded at ten and sorted) rather than exact values.
+
+## Collectors
+
+| Collector | Reads | Via |
+| --- | --- | --- |
+| `CPUCollector` | core count, usage % | `GetSystemTimes` delta between samples |
+| `MemoryCollector` | total / used MB | `GlobalMemoryStatusEx` |
+| `DiskCollector` | total / free GB of `C:\` | `GetDiskFreeSpaceExA` |
+| `OsCollector` | OS name, version, host name | `RtlGetVersion`, `GetComputerNameA` |
+| `ProcessCollector` | process count, top 10 by memory | `CreateToolhelp32Snapshot`, `GetProcessMemoryInfo` |
+| `NetworkCollector` | per-interface bytes and per-second rates | `GetIfTable2` |
+
+`CPUCollector` and `NetworkCollector` are **stateful** — a rate is a delta
+between successive samples, so each keeps its previous reading and a 100 ms
+minimum interval below which the last value stands. `SnapshotCollector` owns one
+long-lived instance of each; constructing a fresh collector per cycle would make
+every reading a first sample.
+
+`ProcessCollector` ranks by memory working set, not CPU: working set is one
+stateless read per process, whereas per-process CPU would need `GetProcessTimes`
+deltas tracked across a PID set that recycles between samples. A process the
+agent cannot open still counts; only its memory reads as zero.
+
+`NetworkCollector` filters to operational hardware interfaces. `GetIfTable2`
+returns a row per filter layer stacked on each adapter, so an unfiltered walk
+would count "Wi-Fi" five or six times over.
+
+## Snapshot shape
+
+`GET /snapshot` returns `200` with the current reading, or `204` before the
+first collection.
+
+```json
+{
+  "collectedAt": "2026-08-12T11:15:27Z",
+  "cpuInfo": {"coreCount": 20, "usagePercent": 7.4},
+  "memoryInfo": {"totalMB": 16124, "usedMB": 11945},
+  "diskInfo": {"totalGB": 475, "freeGB": 36},
+  "systemInfo": {"name": "Microsoft Windows", "version": "10.0.26200", "hostName": "devbox"},
+  "processInfo": {
+    "count": 411,
+    "top": [{"pid": 15888, "name": "Code.exe", "memoryMB": 442}]
+  },
+  "networkInfo": {
+    "interfaces": [
+      {"name": "Wi-Fi", "bytesSent": 188659916, "bytesRecv": 3386875336,
+       "bytesSentPerSec": 3108.1, "bytesRecvPerSec": 2009.1}
+    ]
+  }
+}
+```
+
+The JSON is written by a hand-rolled emitter in `HTTPServer.cpp` — one
+`jsonFor()` overload per domain type, plus a `jsonArray()` template for the
+`top` and `interfaces` lists.
+
+## Configuration
+
+`AgentConfig` (collection interval, server port, log path) is currently
+constructed in `main.cpp`. A file-based configuration loader is the open Phase 1
+item.
+
+## Structure
+
+```text
+agent/
+    include/
+        collector/   # One header per collector, plus SnapshotCollector
+        domain/      # Plain data types: CPUInfo, ProcessInfo, NetworkInfo, ...
+        http/        # HTTPServer, request parser
+        scheduler/   # Fixed-interval worker thread
+    src/             # Matching implementations
+    tests/           # One assert-based program per target
+```
