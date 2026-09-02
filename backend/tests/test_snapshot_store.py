@@ -21,16 +21,43 @@ def store():
     db_session.dispose_engine()
 
 
-def make_snapshot(host_name="devbox", collected_at=BASE_TIME, cpu_usage=42.5):
-    return Snapshot.from_payload(
-        {
-            "collectedAt": collected_at.isoformat(),
-            "cpuInfo": {"coreCount": 8, "usagePercent": cpu_usage},
-            "memoryInfo": {"totalMB": 16384, "usedMB": 4096},
-            "diskInfo": {"totalGB": 512, "freeGB": 120},
-            "systemInfo": {"name": "Windows", "version": "11", "hostName": host_name},
+def make_snapshot(
+    host_name="devbox",
+    collected_at=BASE_TIME,
+    cpu_usage=42.5,
+    process_count=None,
+    net_recv=None,
+    net_sent=None,
+):
+    payload = {
+        "collectedAt": collected_at.isoformat(),
+        "cpuInfo": {"coreCount": 8, "usagePercent": cpu_usage},
+        "memoryInfo": {"totalMB": 16384, "usedMB": 4096},
+        "diskInfo": {"totalGB": 512, "freeGB": 120},
+        "systemInfo": {"name": "Windows", "version": "11", "hostName": host_name},
+    }
+
+    if process_count is not None:
+        payload["processInfo"] = {
+            "count": process_count,
+            "top": [{"pid": 1, "name": "top.exe", "memoryMB": 10}],
         }
-    )
+
+    if net_recv is not None or net_sent is not None:
+        payload["networkInfo"] = {
+            "interfaces": [
+                {
+                    "name": name,
+                    "bytesSent": 0,
+                    "bytesRecv": 0,
+                    "bytesSentPerSec": (net_sent or 0) / 2,
+                    "bytesRecvPerSec": (net_recv or 0) / 2,
+                }
+                for name in ("Ethernet", "Wi-Fi")
+            ],
+        }
+
+    return Snapshot.from_payload(payload)
 
 
 def test_save_maps_every_field(store):
@@ -232,3 +259,56 @@ def test_query_is_empty_when_nothing_matches(store):
 
     assert store.query(host_name="nowhere") == []
     assert store.query(since=BASE_TIME + timedelta(days=1)) == []
+
+
+def test_save_stores_process_count_and_the_top_list(store):
+    record = store.save(make_snapshot(process_count=240))
+
+    assert record.process_count == 240
+    assert record.process_top == [{"pid": 1, "name": "top.exe", "memoryMB": 10}]
+
+
+def test_save_sums_the_per_interface_rates_and_keeps_the_breakdown(store):
+    record = store.save(make_snapshot(net_recv=1000.0, net_sent=400.0))
+
+    # Two interfaces at half each: the scalar columns carry the machine total,
+    # the JSON column keeps the per-interface rows.
+    assert record.net_bytes_recv_per_sec == 1000.0
+    assert record.net_bytes_sent_per_sec == 400.0
+    assert [nic["name"] for nic in record.network_interfaces] == ["Ethernet", "Wi-Fi"]
+
+
+def test_save_leaves_the_new_columns_null_when_the_agent_sends_nothing(store):
+    record = store.save(make_snapshot())
+
+    assert record.process_count is None
+    assert record.process_top is None
+    assert record.net_bytes_recv_per_sec is None
+    assert record.network_interfaces is None
+
+
+def test_series_averages_the_process_count(store):
+    for minutes, count in ((0, 100), (20, 120), (40, 140)):
+        store.save(make_snapshot(collected_at=BASE_TIME + timedelta(minutes=minutes), process_count=count))
+
+    points = store.series(metric="processes", bucket="hour")
+
+    assert [point.value for point in points] == [120.0]
+
+
+def test_series_reports_network_throughput_in_raw_bytes(store):
+    store.save(make_snapshot(net_recv=2048.0))
+
+    points = store.series(metric="net_recv", bucket="raw")
+
+    assert [point.value for point in points] == [2048.0]
+
+
+def test_series_skips_rows_that_never_carried_the_metric(store):
+    store.save(make_snapshot(collected_at=BASE_TIME, process_count=None))
+    store.save(make_snapshot(collected_at=BASE_TIME + timedelta(minutes=1), process_count=200))
+
+    points = store.series(metric="processes", bucket="raw")
+
+    # The first row has a NULL process_count — nothing to plot, not a zero.
+    assert [point.value for point in points] == [200.0]
