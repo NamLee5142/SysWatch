@@ -147,6 +147,26 @@ int main() {
     // mean the collector never stamped the snapshot.
     assert(collectedAt.rfind("1970-", 0) != 0);
 
+    // Sprint 7: the payload now carries a process block (an object with a count
+    // and a top array) and a network block (an object holding an interfaces
+    // array). The array serializer is new — nothing else on the wire uses one.
+    const size_t processAt = response.find("\"processInfo\":{");
+    assert(processAt != std::string::npos);
+    assert(response.find("\"count\":", processAt) != std::string::npos);
+    assert(response.find("\"top\":[", processAt) != std::string::npos);
+
+    assert(response.find("\"networkInfo\":{\"interfaces\":[") != std::string::npos);
+
+    // The real collector runs on a Windows host here, so there is at least one
+    // process, and its top entry is a fully formed object.
+    assert(response.find("\"pid\":", processAt) != std::string::npos);
+    assert(response.find("\"memoryMB\":", processAt) != std::string::npos);
+
+    // With ten entries the array serializer's separator has to fire: adjacent
+    // objects are joined by "},{" and nothing trails the last one.
+    assert(response.find("},{", processAt) != std::string::npos);
+    assert(response.find(",]") == std::string::npos);
+
     agent.stop();
     server.stop();
     std::cout << "HTTPServer snapshot test passed. collectedAt=" << collectedAt << std::endl;
