@@ -22,12 +22,15 @@ class SnapshotPoller:
         store=None,
         retention_days=0,
         prune_interval_seconds=DEFAULT_PRUNE_INTERVAL_SECONDS,
+        engine=None,
     ):
         self._service = service
         self._interval_seconds = interval_seconds
         self._store = store
         self._retention_days = retention_days
         self._prune_interval_seconds = prune_interval_seconds
+        # Optional: None when SYSWATCH_ALERTS_ENABLED is false.
+        self._engine = engine
         self._task = None
         self._last_prune = None
         # What the last tick did. Nothing else records it: poll_once() swallows
@@ -89,7 +92,7 @@ class SnapshotPoller:
         try:
             # get_snapshot() blocks on a socket, so it cannot run on the event
             # loop without stalling every request served by this process.
-            await asyncio.to_thread(self._service.get_snapshot)
+            snapshot = await asyncio.to_thread(self._service.get_snapshot)
         except LookupError:
             # The agent answered, it just has nothing collected yet. That is a
             # reachable agent, so it clears the error without counting as a
@@ -101,6 +104,10 @@ class SnapshotPoller:
             self._record(error=f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
         else:
             self._record(error=None, collected=True)
+            # Only here — never after a failed or empty poll — so an unreachable
+            # agent cannot raise a storm of false alerts. Agent-down is /status's
+            # job, not the alert engine's.
+            await self._evaluate_alerts(snapshot)
 
     def _record(self, error, collected=False):
         now = datetime.now(timezone.utc)
@@ -108,6 +115,21 @@ class SnapshotPoller:
         self._last_error = error
         if collected:
             self._last_success_at = now
+
+    async def _evaluate_alerts(self, snapshot):
+        """Run the alert engine over a freshly collected snapshot.
+
+        Failures are logged and swallowed, the same rule prune_if_due follows:
+        alerting is a side effect of collection and must never be the reason it
+        stops. The engine touches the database, so it runs off the event loop.
+        """
+        if self._engine is None:
+            return
+
+        try:
+            await asyncio.to_thread(self._engine.evaluate, snapshot)
+        except Exception:
+            logger.warning("Alert evaluation failed", exc_info=True)
 
     async def prune_if_due(self):
         """Drop snapshots past the retention window, at most hourly.

@@ -295,3 +295,73 @@ def test_removal_count_is_logged(caplog):
         asyncio.run(poller_with(store).prune_if_due())
 
     assert "Pruned 12 snapshots" in caplog.text
+
+
+class FakeEngine:
+    """Records the snapshots handed to it, raising on demand."""
+
+    def __init__(self, error=None):
+        self.seen = []
+        self.error = error
+
+    def evaluate(self, snapshot):
+        self.seen.append(snapshot)
+        if self.error is not None:
+            raise self.error
+
+
+def test_alerts_are_evaluated_after_a_successful_poll():
+    engine = FakeEngine()
+
+    asyncio.run(SnapshotPoller(FakeService(), engine=engine).poll_once())
+
+    assert engine.seen == ["snapshot"]
+
+
+def test_alerts_are_not_evaluated_when_the_agent_is_unreachable():
+    engine = FakeEngine()
+    service = FakeService(errors=[AgentConnectionError("down")])
+
+    asyncio.run(SnapshotPoller(service, engine=engine).poll_once())
+
+    # Infrastructure failure must not raise a storm of false alerts.
+    assert engine.seen == []
+
+
+def test_alerts_are_not_evaluated_when_the_agent_has_no_snapshot_yet():
+    engine = FakeEngine()
+    service = FakeService(errors=[LookupError("nothing yet")])
+
+    asyncio.run(SnapshotPoller(service, engine=engine).poll_once())
+
+    assert engine.seen == []
+
+
+def test_alert_evaluation_failure_is_logged_and_swallowed(caplog):
+    engine = FakeEngine(error=RuntimeError("bad rule"))
+
+    with caplog.at_level("WARNING"):
+        asyncio.run(SnapshotPoller(FakeService(), engine=engine).poll_once())
+
+    assert "Alert evaluation failed" in caplog.text
+
+
+def test_alert_evaluation_failure_does_not_stop_the_loop():
+    async def scenario():
+        engine = FakeEngine(error=RuntimeError("bad rule"))
+        poller = SnapshotPoller(FakeService(), interval_seconds=0.01, engine=engine)
+        poller.start()
+
+        kept_going = await wait_for(lambda: len(engine.seen) >= 3)
+        await poller.stop()
+        return kept_going
+
+    assert asyncio.run(scenario())
+
+
+def test_poller_without_an_engine_still_polls():
+    service = FakeService()
+
+    asyncio.run(SnapshotPoller(service).poll_once())
+
+    assert service.calls == 1

@@ -5,10 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
+from app.alerts import AlertEngine
 from app.api import health, hosts, snapshot, snapshots, status
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
-from app.repositories import SnapshotStore
+from app.repositories import AlertRuleStore, AlertStore, SnapshotStore
 from app.services.snapshot_poller import SnapshotPoller
 from app.services.snapshot_service import SnapshotService
 from config import get_settings
@@ -19,11 +20,16 @@ def create_poller(settings):
     store = SnapshotStore()
     service = SnapshotService(client=AgentClient(settings.agent_base_url), store=store)
 
+    engine = None
+    if settings.alerts_enabled:
+        engine = AlertEngine(AlertRuleStore(), AlertStore())
+
     return SnapshotPoller(
         service,
         interval_seconds=settings.poll_interval_seconds,
         store=store,
         retention_days=settings.retention_days,
+        engine=engine,
     )
 
 

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     poll_interval_seconds: float = 10.0
     # Snapshots older than this are pruned. 0 keeps them forever.
     retention_days: int = 30
+    # Whether the poller evaluates alert rules after each successful collection.
+    alerts_enabled: bool = True
     # Browser origins allowed to call this API. Both spellings of the Vite dev
     # server are listed because a browser treats them as different origins.
     cors_origins: Annotated[list[str], NoDecode] = [
