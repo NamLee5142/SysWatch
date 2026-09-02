@@ -87,7 +87,8 @@ SysWatch/
 - [ ] CPU collector
 - [ ] Memory collector
 - [ ] Disk collector
-- [ ] Network collector
+- [x] Network collector
+- [x] Process collector
 - [ ] Configuration loader
 - [ ] JSON serialization
 - [ ] Secure communication module

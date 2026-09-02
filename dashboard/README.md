@@ -123,10 +123,18 @@ without double-fetching alongside `useApi`'s own mount-time fetch.
 
 | Route | Renders |
 | --- | --- |
-| `/` | Overview — one tile per metric plus connection state |
+| `/` | Overview — one tile per metric (CPU, memory, disk, processes, network) plus connection state |
 | `/cpu`, `/memory`, `/disk` | A gauge plus a trend chart, independently loaded |
+| `/processes` | Process count, a top-by-memory table, and a count trend chart (`metric=processes`) |
+| `/network` | One card per interface with its send/receive rates, plus received and sent throughput charts (`metric=net_recv` / `net_sent`) |
 | `/system` | Host identity, agent/poller connection detail, and the host list from `GET /hosts` |
 | `/history` | Filterable, paged table over `GET /snapshots` |
+
+The process and network pages fall back to a "this agent does not report …
+data" message when the latest snapshot has no such block (an agent built
+before Sprint 7). `MetricChart` reads the series' `unit` to pick its axis —
+a fixed 0-100 scale for percentages, an auto scale with `formatBytesPerSec`
+ticks for throughput, whole numbers for a count.
 
 `AppShell` wraps every route with the sidebar and header, including a
 staleness banner (`StalenessBanner`) shown above the page content whenever
