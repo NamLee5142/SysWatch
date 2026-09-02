@@ -3,7 +3,15 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models.snapshot import Bucket, Metric, Series, SeriesPoint, Snapshot, SnapshotPage
+from app.models.snapshot import (
+    METRIC_UNIT,
+    Bucket,
+    Metric,
+    Series,
+    SeriesPoint,
+    Snapshot,
+    SnapshotPage,
+)
 from app.repositories import SnapshotStore
 from app.repositories.snapshot_store import to_storage_time
 
@@ -90,6 +98,7 @@ def snapshot_series(
     return Series(
         metric=metric,
         bucket=bucket,
+        unit=METRIC_UNIT[metric],
         points=[SeriesPoint.from_point(point) for point in points],
     )
 

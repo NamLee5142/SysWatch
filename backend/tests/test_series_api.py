@@ -63,7 +63,7 @@ def values(**params):
 def test_no_data_returns_an_empty_series(store):
     body = series(bucket="hour").json()
 
-    assert body == {"metric": "cpu", "bucket": "hour", "points": []}
+    assert body == {"metric": "cpu", "bucket": "hour", "unit": "percent", "points": []}
 
 
 def test_raw_bucket_returns_every_sample(store):
