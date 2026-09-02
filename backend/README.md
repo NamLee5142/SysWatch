@@ -169,6 +169,14 @@ columns:
 | `mem_total_mb` / `mem_used_mb` | integer | |
 | `disk_total_gb` / `disk_free_gb` | integer | |
 | `os_name` / `os_version` | text | Stored per row: a host's OS version changes over time, so it belongs to the snapshot rather than to the host |
+| `process_count` | integer, null | Total running processes; `null` on rows collected before Sprint 7 |
+| `net_bytes_sent_per_sec` / `net_bytes_recv_per_sec` | float, null | Throughput summed across interfaces |
+| `process_top` | JSON, null | The heaviest processes by memory — point-in-time detail, read only from the latest row |
+| `network_interfaces` | JSON, null | Per-interface breakdown — likewise latest-only |
+
+The last five columns are nullable and were added in Sprint 7. The three
+scalars are what `GET /snapshots/series` buckets; the two JSON columns are
+carried on every row but only ever read back from `GET /snapshots/latest`.
 
 Two constraints do real work:
 
@@ -237,7 +245,17 @@ Fetches the latest snapshot from the agent and returns it as a typed model.
   "cpuInfo": {"coreCount": 8, "usagePercent": 42.5},
   "memoryInfo": {"totalMB": 16384, "usedMB": 4096},
   "diskInfo": {"totalGB": 512, "freeGB": 120},
-  "systemInfo": {"name": "Windows", "version": "11", "hostName": "devbox"}
+  "systemInfo": {"name": "Windows", "version": "11", "hostName": "devbox"},
+  "processInfo": {
+    "count": 240,
+    "top": [{"pid": 1234, "name": "chrome.exe", "memoryMB": 512}]
+  },
+  "networkInfo": {
+    "interfaces": [
+      {"name": "Wi-Fi", "bytesSent": 1000, "bytesRecv": 2000,
+       "bytesSentPerSec": 30.0, "bytesRecvPerSec": 90.0}
+    ]
+  }
 }
 ```
 
@@ -249,6 +267,13 @@ Fetches the latest snapshot from the agent and returns it as a typed model.
 | `memoryInfo.totalMB` / `usedMB` | int | Megabytes |
 | `diskInfo.totalGB` / `freeGB` | int | Gigabytes |
 | `systemInfo.name` / `version` / `hostName` | string | OS identity |
+| `processInfo.count` | int | Total running processes |
+| `processInfo.top[]` | object | The heaviest 10 by memory — `pid`, `name`, `memoryMB` |
+| `networkInfo.interfaces[]` | object | One per operational, non-loopback interface — cumulative `bytesSent` / `bytesRecv` plus the agent-derived `bytesSentPerSec` / `bytesRecvPerSec` |
+
+`processInfo` and `networkInfo` are **omitted** (not `null`) when the agent that
+produced the snapshot predates Sprint 7. An agent with no active network
+interface sends `"networkInfo": {"interfaces": []}`.
 
 Status codes:
 
@@ -290,7 +315,8 @@ curl "http://127.0.0.1:8000/snapshots?since=2026-08-12T00:00:00Z&until=2026-08-1
 ```
 
 Items use the same nested shape as `GET /snapshot`, so one parser handles both
-live and historical data.
+live and historical data — including `processInfo` and `networkInfo`, rebuilt
+from the stored columns and omitted for rows that predate Sprint 7.
 
 | Parameter | Default | Notes |
 | --- | --- | --- |
@@ -320,6 +346,7 @@ curl "http://127.0.0.1:8000/snapshots/series?metric=cpu&since=2026-08-12T00:00:0
 {
   "metric": "cpu",
   "bucket": "hour",
+  "unit": "percent",
   "points": [
     {"t": "2026-08-12T00:00:00Z", "value": 42.5},
     {"t": "2026-08-12T01:00:00Z", "value": 38.1}
@@ -329,11 +356,18 @@ curl "http://127.0.0.1:8000/snapshots/series?metric=cpu&since=2026-08-12T00:00:0
 
 | Parameter | Default | Notes |
 | --- | --- | --- |
-| `metric` | required | `cpu`, `memory` or `disk` — always normalised to one 0-100 axis |
+| `metric` | required | `cpu`, `memory`, `disk`, `processes`, `net_sent` or `net_recv` |
 | `host` | all hosts | Exact host name |
 | `since` | unbounded | Earliest collection time, inclusive |
 | `until` | unbounded | Latest collection time, inclusive |
 | `bucket` | `hour` | `raw`, `minute`, `hour` or `day` — the averaging window, or every sample for `raw` |
+
+`unit` says what `points[].value` is measured in — `percent` for `cpu` /
+`memory` / `disk` (one shared 0-100 axis), `count` for `processes`,
+`bytes_per_sec` for `net_sent` / `net_recv`. A client labels the axis from
+`unit` rather than assuming a percentage. Buckets whose rows never carried the
+requested metric (any row collected before Sprint 7, for `processes` and the
+network metrics) contribute no point rather than a zero.
 
 Points are **oldest first**, the opposite order from `GET /snapshots` — a chart
 is read left to right, and reversing one silently flips its axis.
