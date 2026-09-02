@@ -26,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/memory', label: 'Memory' },
   { to: '/disk', label: 'Disk' },
   { to: '/processes', label: 'Processes' },
+  { to: '/network', label: 'Network' },
   { to: '/system', label: 'System' },
   { to: '/history', label: 'History' },
 ]
