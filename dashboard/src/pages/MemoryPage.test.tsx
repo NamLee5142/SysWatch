@@ -26,6 +26,7 @@ const SNAPSHOT: Snapshot = {
 const SERIES: Series = {
   metric: 'memory',
   bucket: 'hour',
+  unit: 'percent',
   points: [
     { t: '2026-08-25T10:00:00Z', value: 20 },
     { t: '2026-08-25T11:00:00Z', value: 30 },
