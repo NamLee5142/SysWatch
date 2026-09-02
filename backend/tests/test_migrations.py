@@ -113,3 +113,80 @@ def test_downgrade_removes_the_table(alembic_config):
 
     inspector = inspect(create_engine(f"sqlite:///{database}"))
     assert "snapshots" not in inspector.get_table_names()
+
+
+# The revision that added the alert tables, one before the seed data.
+ALERT_TABLES_REVISION = "c6a63f3f08c6"
+
+
+def test_default_alert_rules_are_seeded(alembic_config):
+    config, database = alembic_config
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text("SELECT name, metric, enabled FROM alert_rules ORDER BY id")
+        ).all()
+
+    assert [r.name for r in rows] == [
+        "CPU usage high",
+        "CPU usage critical",
+        "Memory usage high",
+        "Disk almost full",
+        "Process count high",
+        "Network receive rate high",
+    ]
+    assert all(r.enabled for r in rows)
+
+
+def test_seed_downgrade_removes_only_the_seeded_rules(alembic_config):
+    config, database = alembic_config
+
+    command.upgrade(config, "head")
+
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO alert_rules "
+                "(name, metric, operator, threshold, severity, enabled, created_at, updated_at) "
+                "VALUES ('Mine', 'cpu', 'lt', 5, 'info', 1, '2026-01-01', '2026-01-01')"
+            )
+        )
+
+    command.downgrade(config, ALERT_TABLES_REVISION)
+
+    with engine.connect() as connection:
+        names = connection.execute(text("SELECT name FROM alert_rules")).scalars().all()
+
+    # The user's own rule stays; the seeded ones are gone.
+    assert names == ["Mine"]
+
+
+def test_seed_upgrade_skips_a_name_that_already_exists(alembic_config):
+    config, database = alembic_config
+
+    # Stop just before the seed, plant a rule sharing one of its names.
+    command.upgrade(config, ALERT_TABLES_REVISION)
+
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO alert_rules "
+                "(name, metric, operator, threshold, severity, enabled, created_at, updated_at) "
+                "VALUES ('Disk almost full', 'disk', 'lt', 1, 'critical', 0, '2026-01-01', '2026-01-01')"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text("SELECT threshold, severity FROM alert_rules WHERE name = 'Disk almost full'")
+        ).all()
+
+    # Not duplicated, and the existing row is left as the user had it.
+    assert rows == [(1.0, "critical")]
