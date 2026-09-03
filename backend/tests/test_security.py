@@ -46,8 +46,16 @@ def test_the_headers_are_on_error_responses_too(client):
     assert response.headers["Content-Security-Policy"] == API_CONTENT_SECURITY_POLICY
 
 
-def test_the_documentation_ui_is_exempt_from_the_content_policy(client):
-    response = client.get("/docs")
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_the_documentation_is_absent_in_production(client, path):
+    # A free, always-current map of every endpoint and request shape, offered
+    # to anyone who can reach the port.
+    assert client.get(path).status_code == 404
+
+
+def test_the_documentation_ui_is_exempt_from_the_content_policy(database, monkeypatch):
+    monkeypatch.setenv("SYSWATCH_DEV_MODE", "true")
+    response = TestClient(create_app()).get("/docs")
 
     # default-src 'none' would blank Swagger UI, which loads its own scripts
     # and styles. The other headers still apply.

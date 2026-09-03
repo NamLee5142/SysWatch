@@ -112,10 +112,24 @@ def create_app() -> FastAPI:
     # emitted before logging is configured and vanish.
     app_logging.configure_logging()
 
+    settings = get_settings()
+
     # debug stays off: FastAPI's debug mode returns a traceback to the
     # caller, which hands out file paths, local variables and library
     # versions to anyone who can provoke a 500.
-    app = FastAPI(title="SysWatch Backend", lifespan=lifespan)
+    #
+    # The documentation UI is a development tool. In production it is a free,
+    # always-current map of every endpoint and every request shape, offered to
+    # anyone who can reach the port. Passed as None at construction rather than
+    # unregistered afterwards, so there is no window where the routes exist.
+    docs = settings.dev_mode
+    app = FastAPI(
+        title="SysWatch Backend",
+        lifespan=lifespan,
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
+        openapi_url="/openapi.json" if docs else None,
+    )
 
     app.add_middleware(SecurityHeadersMiddleware)
 
@@ -127,7 +141,7 @@ def create_app() -> FastAPI:
         # wildcard under allow_credentials by echoing back whatever Origin
         # asked — which is not "any origin may read public data", it is "any
         # site may make requests as the logged-in user".
-        allow_origins=get_settings().cors_origins,
+        allow_origins=settings.cors_origins,
         # Required now that the session lives in a cookie: without it the
         # browser sends the credential on no cross-origin request and accepts
         # the Set-Cookie on none either.
@@ -169,7 +183,7 @@ def create_app() -> FastAPI:
 
     # Last, so every /api route is matched first. Everything left over is the
     # dashboard's — including "/", which is why no route claims it.
-    mount_dashboard(app, get_settings().dashboard_dir)
+    mount_dashboard(app, settings.dashboard_dir)
 
     return app
 

@@ -86,12 +86,11 @@ class Settings(BaseSettings):
     # Secure flag, so the dashboard works over plain HTTP in development.
     # Defaults false so the insecure state is the one you opt into.
     dev_mode: bool = False
-    # Browser origins allowed to call this API. Both spellings of the Vite dev
-    # server are listed because a browser treats them as different origins.
-    cors_origins: Annotated[list[str], NoDecode] = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ]
+    # Browser origins allowed to call this API cross-origin. Empty by default,
+    # because the backend now serves the dashboard itself and the Vite dev
+    # proxy makes development same-origin too — so neither deployment needs a
+    # grant, and the one that does should have to say so.
+    cors_origins: Annotated[list[str], NoDecode] = []
 
     model_config = SettingsConfigDict(
         env_prefix="SYSWATCH_",
