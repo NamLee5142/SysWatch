@@ -10,6 +10,7 @@ from .alert import (
     Operator,
     Severity,
 )
+from .auth import Credentials, CurrentUser, Role
 from .host import Host, HostList
 from .snapshot import (
     CPUInfo,
@@ -33,11 +34,14 @@ __all__ = [
     "AlertRuleUpdate",
     "AlertState",
     "CPUInfo",
+    "Credentials",
+    "CurrentUser",
     "DiskInfo",
     "Host",
     "HostList",
     "MemoryInfo",
     "Operator",
+    "Role",
     "Series",
     "SeriesPoint",
     "Severity",
