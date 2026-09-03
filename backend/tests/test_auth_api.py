@@ -21,6 +21,9 @@ PASSWORD = "correct horse Battery staple"
 @pytest.fixture(autouse=True)
 def environment(monkeypatch):
     monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret")
+    # conftest turns authentication off for the suite at large; this file is
+    # entirely about it.
+    monkeypatch.setenv("SYSWATCH_AUTH_ENABLED", "true")
     monkeypatch.delenv("SYSWATCH_DEV_MODE", raising=False)
 
     # The limiter is process-wide, so failed logins would otherwise accumulate
