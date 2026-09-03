@@ -222,3 +222,108 @@ def test_seed_upgrade_skips_a_name_that_already_exists(alembic_config):
 
     # Not duplicated, and the existing row is left as the user had it.
     assert rows == [(1.0, "critical")]
+
+
+# The revision that seeded the default alert rules — the Sprint 8 head, one
+# before authentication arrived.
+ALERT_SEED_REVISION = "0a33e83916fa"
+
+
+def test_auth_tables_are_created(alembic_config):
+    config, database = alembic_config
+
+    command.upgrade(config, "head")
+
+    inspector = inspect(create_engine(f"sqlite:///{database}"))
+    assert {"users", "sessions"}.issubset(inspector.get_table_names())
+
+    assert {column["name"] for column in inspector.get_columns("users")} == {
+        "id",
+        "username",
+        "password_hash",
+        "role",
+        "enabled",
+        "created_at",
+        "updated_at",
+    }
+    assert {column["name"] for column in inspector.get_columns("sessions")} == {
+        "id",
+        "token_hash",
+        "user_id",
+        "expires_at",
+        "created_at",
+        "last_seen_at",
+    }
+
+    # Two accounts must not answer to one login, and one token must not resolve
+    # to two sessions.
+    assert [u["name"] for u in inspector.get_unique_constraints("users")] == ["uq_users_username"]
+    assert [u["name"] for u in inspector.get_unique_constraints("sessions")] == [
+        "uq_sessions_token_hash"
+    ]
+
+    foreign_keys = inspector.get_foreign_keys("sessions")
+    assert len(foreign_keys) == 1
+    assert foreign_keys[0]["referred_table"] == "users"
+    assert foreign_keys[0]["options"]["ondelete"] == "CASCADE"
+
+
+def test_deleting_a_user_cascades_to_their_sessions(alembic_config):
+    config, database = alembic_config
+    command.upgrade(config, "head")
+
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.begin() as connection:
+        # SQLite ignores foreign keys unless asked, per connection — the same
+        # pragma app/db/session.py sets for the running application.
+        connection.execute(text("PRAGMA foreign_keys=ON"))
+        connection.execute(
+            text(
+                "INSERT INTO users (id, username, password_hash, role, enabled, "
+                "created_at, updated_at) VALUES "
+                "(1, 'admin', 'hash', 'admin', 1, '2026-09-03', '2026-09-03')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO sessions (token_hash, user_id, expires_at, created_at, "
+                "last_seen_at) VALUES ('abc', 1, '2026-09-04', '2026-09-03', '2026-09-03')"
+            )
+        )
+        connection.execute(text("DELETE FROM users WHERE id = 1"))
+        remaining = connection.execute(text("SELECT COUNT(*) FROM sessions")).scalar_one()
+
+    # A session that resolves to nobody would be a row the auth dependency has
+    # to defend against for no reason.
+    assert remaining == 0
+
+
+def test_a_pre_auth_database_gains_the_auth_tables_with_data_intact(alembic_config):
+    config, database = alembic_config
+
+    # Stop at the Sprint 8 head and put a rule and a snapshot in it.
+    command.upgrade(config, ALERT_SEED_REVISION)
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO snapshots (host_name, collected_at, cpu_core_count, "
+                "cpu_usage_percent, mem_total_mb, mem_used_mb, disk_total_gb, "
+                "disk_free_gb, os_name, os_version) VALUES "
+                "('devbox', '2026-08-12 11:15:27', 8, 42.5, 16384, 4096, 512, 120, 'Windows', '11')"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    inspector = inspect(engine)
+    assert {"users", "sessions"}.issubset(inspector.get_table_names())
+
+    with engine.connect() as connection:
+        snapshots = connection.execute(text("SELECT COUNT(*) FROM snapshots")).scalar_one()
+        rules = connection.execute(text("SELECT COUNT(*) FROM alert_rules")).scalar_one()
+        users = connection.execute(text("SELECT COUNT(*) FROM users")).scalar_one()
+
+    assert (snapshots, rules) == (1, 6)
+    # No account is invented by the migration — bootstrapping is the CLI's job.
+    assert users == 0

@@ -1,12 +1,23 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
-import { getActiveAlerts, getAlerts, listAlertRules } from '../api/client'
+import {
+  createAlertRule,
+  deleteAlertRule,
+  getActiveAlerts,
+  getAlerts,
+  listAlertRules,
+  updateAlertRule,
+  type AlertRuleInput,
+} from '../api/client'
 import type { Alert, AlertRule, Severity } from '../api/types'
+import { useAuth } from '../auth/AuthContext'
 import { RelativeTime } from '../components/RelativeTime'
 import { TableSkeletonRows } from '../components/TableSkeletonRows'
 import { usePolling } from '../hooks/usePolling'
 import { formatCondition, formatMetricValue, METRIC_LABEL, SEVERITY_LABEL } from '../lib/alerts'
 import { POLL_INTERVAL_MS } from '../lib/constants'
+import { describeRuleError } from '../lib/errors'
+import { AlertRuleForm } from './AlertRuleForm'
 import styles from './AlertsPage.module.css'
 
 const RESOLVED_LIMIT = 20
@@ -19,6 +30,7 @@ const SEVERITY_CLASS: Record<Severity, string> = {
 
 const ALERT_HEADERS = ['Severity', 'Alert', 'Host', 'Value', 'Threshold', 'Since', 'State']
 const RULE_HEADERS = ['Name', 'Metric', 'Condition', 'Severity', 'Enabled']
+const ADMIN_RULE_HEADERS = [...RULE_HEADERS, 'Actions']
 
 function alertRows(alerts: Alert[]): ReactNode {
   return alerts.map((alert) => (
@@ -38,7 +50,14 @@ function alertRows(alerts: Alert[]): ReactNode {
   ))
 }
 
-function ruleRows(rules: AlertRule[]): ReactNode {
+interface RuleActions {
+  isAdmin: boolean
+  busyId: number | null
+  onToggle: (rule: AlertRule) => void
+  onDelete: (rule: AlertRule) => void
+}
+
+function ruleRows(rules: AlertRule[], actions: RuleActions): ReactNode {
   return rules.map((rule) => (
     <tr key={rule.id}>
       <td>{rule.name}</td>
@@ -48,6 +67,27 @@ function ruleRows(rules: AlertRule[]): ReactNode {
         {SEVERITY_LABEL[rule.severity]}
       </td>
       <td className={styles.state}>{rule.enabled ? 'Yes' : 'No'}</td>
+      {actions.isAdmin && (
+        <td>
+          <span className={styles.rowActions}>
+            <button
+              type="button"
+              onClick={() => actions.onToggle(rule)}
+              disabled={actions.busyId === rule.id}
+            >
+              {rule.enabled ? 'Disable' : 'Enable'}
+            </button>
+            <button
+              type="button"
+              className={styles.danger}
+              onClick={() => actions.onDelete(rule)}
+              disabled={actions.busyId === rule.id}
+            >
+              Delete
+            </button>
+          </span>
+        </td>
+      )}
     </tr>
   ))
 }
@@ -63,6 +103,10 @@ interface TableSectionProps {
   isEmpty: boolean
   rows: ReactNode
   error: unknown
+  /** Controls belonging to the section, shown beside its heading. */
+  action?: ReactNode
+  /** Rendered under the heading — a form, or the message from a failed write. */
+  banner?: ReactNode
 }
 
 function TableSection({
@@ -76,6 +120,8 @@ function TableSection({
   isEmpty,
   rows,
   error,
+  action,
+  banner,
 }: TableSectionProps) {
   const head = (
     <thead>
@@ -91,10 +137,15 @@ function TableSection({
 
   return (
     <section className={styles.section}>
-      <h2>
-        {title}
-        {meta != null && <span className={styles.count}> {meta}</span>}
-      </h2>
+      <div className={styles.sectionHeader}>
+        <h2>
+          {title}
+          {meta != null && <span className={styles.count}> {meta}</span>}
+        </h2>
+        {action}
+      </div>
+
+      {banner}
 
       {hasData ? (
         isEmpty ? (
@@ -125,6 +176,8 @@ function TableSection({
 }
 
 export function AlertsPage() {
+  const { isAdmin } = useAuth()
+
   // Three independent polls, like SystemPage: the active list is the live one,
   // and the resolved list must refresh too so an alert that clears is seen to
   // move from one table to the other.
@@ -134,6 +187,53 @@ export function AlertsPage() {
     POLL_INTERVAL_MS,
   )
   const rules = usePolling(listAlertRules, POLL_INTERVAL_MS)
+
+  const [adding, setAdding] = useState(false)
+  // busyId disables the row being changed; saving covers the create form, which
+  // has no row to point at.
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [ruleError, setRuleError] = useState<string | null>(null)
+
+  // Every mutation runs through here so the refetch, the busy flag and the
+  // error message cannot get out of step with each other.
+  async function mutate(id: number | null, change: () => Promise<unknown>) {
+    setRuleError(null)
+    setBusyId(id)
+    setSaving(true)
+
+    try {
+      await change()
+      // The list is polled, but waiting up to five seconds to see your own
+      // click take effect reads as the click not having worked.
+      await rules.refetch()
+      return true
+    } catch (cause) {
+      setRuleError(describeRuleError(cause))
+      return false
+    } finally {
+      setBusyId(null)
+      setSaving(false)
+    }
+  }
+
+  async function handleCreate(rule: AlertRuleInput) {
+    if (await mutate(null, () => createAlertRule(rule))) {
+      setAdding(false)
+    }
+  }
+
+  function handleToggle(rule: AlertRule) {
+    void mutate(rule.id, () => updateAlertRule(rule.id, { enabled: !rule.enabled }))
+  }
+
+  function handleDelete(rule: AlertRule) {
+    // Deleting a rule also orphans its alert history, so this asks first.
+    if (!window.confirm(`Delete the rule "${rule.name}"?`)) {
+      return
+    }
+    void mutate(rule.id, () => deleteAlertRule(rule.id))
+  }
 
   return (
     <div className={styles.page}>
@@ -166,14 +266,52 @@ export function AlertsPage() {
 
       <TableSection
         title="Rules"
-        headers={RULE_HEADERS}
+        headers={isAdmin ? ADMIN_RULE_HEADERS : RULE_HEADERS}
         loadingLabel="Loading alert rules"
         errorText="Unable to load alert rules."
         emptyText="No alert rules configured."
         hasData={Boolean(rules.data)}
         isEmpty={rules.data?.items.length === 0}
-        rows={rules.data ? ruleRows(rules.data.items) : null}
+        rows={
+          rules.data
+            ? ruleRows(rules.data.items, {
+                isAdmin,
+                busyId,
+                onToggle: handleToggle,
+                onDelete: handleDelete,
+              })
+            : null
+        }
         error={rules.error}
+        action={
+          // Hidden from a viewer as a courtesy. What actually stops them is
+          // require_admin on the backend, which refuses these calls however
+          // they are made.
+          isAdmin && !adding ? (
+            <button type="button" className={styles.toggle} onClick={() => setAdding(true)}>
+              Add rule
+            </button>
+          ) : null
+        }
+        banner={
+          <>
+            {isAdmin && adding && (
+              <AlertRuleForm
+                onSubmit={handleCreate}
+                onCancel={() => {
+                  setAdding(false)
+                  setRuleError(null)
+                }}
+                busy={saving}
+              />
+            )}
+            {ruleError !== null && (
+              <p className={styles.ruleError} role="alert">
+                {ruleError}
+              </p>
+            )}
+          </>
+        }
       />
     </div>
   )

@@ -1,16 +1,12 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 
 import { AppRoutes } from './routes'
+import { renderWithAuth } from './test/renderWithAuth'
 
 function renderAt(path: string) {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <AppRoutes />
-    </MemoryRouter>,
-  )
+  return renderWithAuth(<AppRoutes />, { path })
 }
 
 describe('AppRoutes', () => {

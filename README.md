@@ -59,15 +59,17 @@ SysWatch/
         app/
             alerts/            # Rule evaluator and alert engine
             api/               # FastAPI routes
+            auth/              # Passwords, sessions, dependencies, admin CLI
             client/            # HTTP client for the C++ agent
             db/                # Engine, session scope, ORM models
-            models/            # Pydantic snapshot and alert models
+            models/            # Pydantic snapshot, alert and auth models
             repositories/      # Persistence boundary
             services/          # Snapshot service and background poller
         tests/
     dashboard/                 # React + TypeScript web dashboard
         src/
             api/               # Typed HTTP client and mirrored backend models
+            auth/              # AuthProvider, useAuth, ProtectedRoute, login route
             components/        # Shared UI: gauges, cards, charts, skeletons, alert indicator
             hooks/             # useApi, usePolling, useUpdateEffect
             layout/            # AppShell — sidebar, header, routed outlet
@@ -101,7 +103,7 @@ SysWatch/
 - [x] FastAPI backend
 - [ ] Agent registration
 - [x] Metric ingestion API
-- [ ] Authentication
+- [x] Authentication
 - [x] Database integration
 - [x] Logging
 - [x] Configuration management

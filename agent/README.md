@@ -45,6 +45,30 @@ Git Bash ships older copies in `/mingw64/bin` that shadow the real ones, and the
 process then exits 127 with no message. Putting the compiler's `bin` first fixes
 it.
 
+## Network exposure
+
+**The agent binds `127.0.0.1` and only `127.0.0.1`. This is not configurable,
+and must not become configurable.**
+
+`GET /snapshot` is unauthenticated and returns the machine's CPU, memory, disk,
+running-process and per-interface network detail to anyone who asks. SysWatch
+does not authenticate here — it authenticates at the
+[backend](../backend/README.md) boundary, on the assumption that the only thing
+able to open a socket to this port is the backend process on the same host.
+Binding `INADDR_ANY` would publish all of that to the local network and route
+straight past the backend's login.
+
+Consequences, deliberately:
+
+- `AgentConfig` has a `serverPort` but no bind host.
+- The dashboard never talks to the agent; it only ever calls the backend.
+- The port must not be forwarded, published from a container, or opened in a
+  firewall. Remote collection is a multi-host agent-registration problem with
+  its own credential design — not a bind-address change.
+
+`tests/http_server_bind_tests.cpp` enforces this: it finds the host's own
+non-loopback addresses and fails if any of them can reach the server.
+
 ## Testing
 
 Each `*_tests` target is a standalone assert-based program that exits non-zero
@@ -119,6 +143,9 @@ The JSON is written by a hand-rolled emitter in `HTTPServer.cpp` — one
 `AgentConfig` (collection interval, server port, log path) is currently
 constructed in `main.cpp`. A file-based configuration loader is the open Phase 1
 item.
+
+There is no bind-host setting and a configuration loader must not add one — see
+[Network exposure](#network-exposure).
 
 ## Structure
 

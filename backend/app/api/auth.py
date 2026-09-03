@@ -1,0 +1,153 @@
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+
+from app.auth.dependencies import require_authenticated_user
+from app.auth.rate_limit import LoginRateLimiter
+from app.auth.service import AuthService
+from app.auth.session import SESSION_COOKIE
+from app.models.auth import Credentials, CurrentUser
+from config import get_settings
+
+router = APIRouter()
+
+# One message for every way a login can fail. The service already spends the
+# same time on an unknown username as on a wrong password; saying "no such user"
+# here would hand back through the body what that was careful not to leak
+# through the clock.
+INVALID_CREDENTIALS = "Invalid username or password"
+
+# Process-wide, so every request charges the same counters. See the module
+# docstring for what this does and does not defend against.
+login_limiter = LoginRateLimiter()
+
+
+def create_auth_service() -> AuthService:
+    return AuthService()
+
+
+def client_key(request: Request) -> str:
+    """What the limiter counts against.
+
+    The source address, which behind a reverse proxy is the proxy — a
+    deployment that terminates TLS elsewhere has to forward the real address
+    and have this read it before the limit means anything there. Falls back to
+    a single shared bucket when there is no client address at all (an ASGI
+    transport with no peer), which throttles conservatively rather than not at
+    all.
+    """
+    return request.client.host if request.client else "unknown"
+
+
+def enforce_login_rate_limit(request: Request) -> None:
+    retry_after = login_limiter.retry_after(client_key(request))
+
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+
+# sync def so FastAPI runs the blocking database work in a threadpool
+# instead of stalling the event loop
+@router.post(
+    "/auth/login",
+    response_model=CurrentUser,
+    summary="Exchange credentials for a session cookie",
+    dependencies=[Depends(enforce_login_rate_limit)],
+    responses={
+        401: {"description": "Invalid username or password"},
+        429: {"description": "Too many failed attempts"},
+    },
+)
+def login(credentials: Credentials, request: Request, response: Response):
+    service = create_auth_service()
+    key = client_key(request)
+
+    user = service.authenticate(credentials.username, credentials.password)
+    if user is None:
+        login_limiter.record_failure(key)
+        raise HTTPException(status_code=401, detail=INVALID_CREDENTIALS)
+
+    # A password that finally works clears the record, so a forgetful user
+    # is not still one typo from a lockout.
+    login_limiter.reset(key)
+
+    _set_session_cookie(response, service.create_session(user))
+
+    # The role travels back with the login so the dashboard can render the right
+    # controls without a second round trip. CurrentUser has no field a password
+    # hash could land in.
+    return CurrentUser.from_record(user)
+
+
+# sync def so FastAPI runs the blocking database work in a threadpool
+# instead of stalling the event loop
+@router.post(
+    "/auth/logout",
+    status_code=204,
+    summary="End the current session",
+)
+def logout(request: Request):
+    # Idempotent: logging out without a session, or with one the server has
+    # already forgotten, is a success. There is nothing useful for a caller to
+    # do differently, and reporting it would confirm whether a token was live.
+    create_auth_service().revoke(request.cookies.get(SESSION_COOKIE))
+
+    # Built here rather than injected, because returning a Response replaces
+    # anything set on an injected one — the cleared cookie has to go on this.
+    response = Response(status_code=204)
+    _clear_session_cookie(response)
+    return response
+
+
+# sync def so FastAPI runs the blocking database work in a threadpool
+# instead of stalling the event loop
+@router.get(
+    "/auth/me",
+    response_model=CurrentUser,
+    summary="Who the caller is",
+    responses={401: {"description": "Not authenticated"}},
+)
+def me(current: CurrentUser = Depends(require_authenticated_user)):
+    return current
+
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    settings = get_settings()
+
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        # The browser holds this; page JavaScript must not be able to read it.
+        httponly=True,
+        # HTTPS only, except in development where the dashboard is served over
+        # plain HTTP through the Vite proxy.
+        secure=not settings.dev_mode,
+        # Lax rather than Strict: the cookie still travels on a top-level
+        # navigation back into the dashboard, which Strict would break, while
+        # cross-site form posts — the CSRF shape that matters for a JSON API —
+        # still do not carry it.
+        samesite="lax",
+        path="/",
+        # Expire the cookie alongside the session it names, so a browser is not
+        # holding a credential the server has already stopped honouring.
+        max_age=settings.session_ttl_seconds,
+        # No domain attribute on purpose: the cookie stays scoped to the host
+        # the browser actually talked to. Setting one would break the
+        # development proxy, which rewrites the origin.
+    )
+
+
+def _clear_session_cookie(response: Response) -> None:
+    settings = get_settings()
+
+    # Every attribute that identifies the cookie has to match the one that set
+    # it, or the browser deletes nothing and keeps the original.
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        secure=not settings.dev_mode,
+        samesite="lax",
+    )

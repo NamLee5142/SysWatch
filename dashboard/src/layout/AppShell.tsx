@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
 import { getLatestSnapshot, getStatus } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
 import { AlertIndicator } from '../components/AlertIndicator'
 import { StalenessBanner } from '../components/StalenessBanner'
 import { StatusDot } from '../components/StatusDot'
@@ -38,6 +39,7 @@ function navLinkClassName({ isActive }: { isActive: boolean }): string {
 }
 
 export function AppShell() {
+  const { user, signOut } = useAuth()
   // Independent of whatever the current page fetches: this header is chrome
   // rendered on every route, including ones (History, System) that do not
   // themselves poll the latest snapshot. A little duplicated polling against
@@ -73,6 +75,18 @@ export function AppShell() {
             <span className={styles.connection}>
               <StatusDot state={agentState} />
               {AGENT_STATE_LABEL[agentState]}
+            </span>
+            <span className={styles.account}>
+              {/* The role is shown because it explains why the alert-rule
+                  controls are or are not there — a viewer who cannot see them
+                  should be able to tell why without asking. */}
+              <span className={styles.username}>
+                {user?.username}
+                {user !== null && <span className={styles.role}> · {user.role}</span>}
+              </span>
+              <button type="button" className={styles.signOut} onClick={() => void signOut()}>
+                Sign out
+              </button>
             </span>
           </div>
         </header>

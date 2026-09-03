@@ -278,6 +278,12 @@ void HTTPServer::start() {
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port_);
+    // Loopback only, and deliberately not configurable. This server has no
+    // authentication and will not grow any: SysWatch puts login at the backend
+    // boundary instead, on the assumption that the agent is reachable from its
+    // own host and nowhere else. Binding INADDR_ANY here would publish every
+    // collected metric to the local network and route straight past that login.
+    // http_server_bind_tests.cpp fails if this changes.
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
     if (bind(listenSocket_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {

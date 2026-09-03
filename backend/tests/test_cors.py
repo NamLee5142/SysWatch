@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.main import create_app
 from config import Settings
@@ -80,12 +81,73 @@ def test_preflight_still_rejects_a_write_method_from_an_unknown_origin(client):
     assert "access-control-allow-origin" not in response.headers
 
 
-def test_credentials_are_not_allowed(client):
+def test_credentials_are_allowed_for_a_configured_origin(client):
     response = client.get("/health", headers={"Origin": DASHBOARD_ORIGIN})
 
-    # The API is unauthenticated. Allowing credentials would let a browser
-    # attach cookies to these requests before Phase 4 adds any auth to check.
-    assert "access-control-allow-credentials" not in response.headers
+    # The session is a cookie now. Without this the browser sends it on no
+    # cross-origin request and accepts the Set-Cookie on none either, so the
+    # dashboard could log in and then appear logged out.
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+def test_a_credentialed_preflight_names_one_origin_not_a_wildcard(client):
+    response = preflight(client, DASHBOARD_ORIGIN, method="POST")
+
+    assert response.headers["access-control-allow-origin"] == DASHBOARD_ORIGIN
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+def test_only_the_headers_the_api_needs_are_allowed(client):
+    response = preflight(client, DASHBOARD_ORIGIN, method="POST")
+
+    allowed = {h.strip().lower() for h in response.headers["access-control-allow-headers"].split(",")}
+
+    # Narrowed from "*": JSON bodies and a cookie the browser attaches itself.
+    # Starlette adds the CORS-safelisted request headers (accept,
+    # accept-language, content-language) on top, which a browser would send
+    # without asking anyway — so what matters is that nothing else got in.
+    assert "content-type" in allowed
+    assert "*" not in allowed
+    assert allowed <= {"accept", "accept-language", "content-language", "content-type"}
+
+
+def test_an_unlisted_header_is_not_advertised(client):
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": DASHBOARD_ORIGIN,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "X-Admin-Override",
+        },
+    )
+
+    assert "x-admin-override" not in response.headers.get("access-control-allow-headers", "").lower()
+
+
+def test_retry_after_is_readable_by_the_page(client):
+    response = client.get("/health", headers={"Origin": DASHBOARD_ORIGIN})
+
+    # Not a CORS-safelisted response header, so without exposing it the login
+    # form cannot tell the user how long the rate limit has to run.
+    exposed = {h.strip().lower() for h in response.headers["access-control-expose-headers"].split(",")}
+    assert "retry-after" in exposed
+
+
+def test_a_wildcard_origin_is_refused_at_startup(clean_env):
+    clean_env.setenv("SYSWATCH_CORS_ORIGINS", "*")
+
+    # Starlette would answer a wildcard under allow_credentials by echoing back
+    # whatever Origin asked — any site could then call the API as the logged-in
+    # user. Better to fail to boot.
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_a_wildcard_among_real_origins_is_refused_too(clean_env):
+    clean_env.setenv("SYSWATCH_CORS_ORIGINS", "http://localhost:5173,*")
+
+    with pytest.raises(ValidationError):
+        Settings()
 
 
 def test_origins_can_be_replaced_by_env(clean_env):

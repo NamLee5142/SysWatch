@@ -16,6 +16,9 @@ collection to the database, so history accumulates whether or not anyone is
 calling the API. `GET /snapshot` still reads the agent live; the `/snapshots`
 endpoints read storage and keep working while the agent is down.
 
+Every endpoint except `GET /health` requires a logged-in session; alert-rule
+changes require the `admin` role. See [Authentication](#authentication).
+
 ## Requirements
 
 - Python 3.10 or newer (verified on 3.14.2)
@@ -29,13 +32,18 @@ python -m venv .venv
 .venv\Scripts\activate          # Windows
 source .venv/bin/activate       # Linux / macOS
 pip install -r requirements.txt
-alembic upgrade head            # create the database schema
+alembic upgrade head                    # create the database schema
+python -m app.auth.create_admin         # create the first account
 ```
 
-The last step is not optional. The application does not create tables on
-startup, so without it every poll fails into a logged warning and the
-`/snapshots` endpoints stay empty. `alembic upgrade head` also seeds the six
-default alert rules.
+Neither of the last two steps is optional. The application does not create
+tables on startup, so without the migration every poll fails into a logged
+warning and the `/snapshots` endpoints stay empty; it also seeds the six
+default alert rules. Without an account there is no way to log in, and every
+endpoint except `/health` answers `401`.
+
+You will also need a session secret before the process will start — see
+[Authentication](#authentication).
 
 ## Running
 
@@ -103,7 +111,8 @@ afterwards. `cpuInfo.usagePercent` moves under load, and
 ## Configuration
 
 All settings are read from the environment with the `SYSWATCH_` prefix. Names
-are case-insensitive. There is no `.env` file support.
+are case-insensitive. There is no `.env` file support, so a secret is either
+exported by whatever starts the process or passed on the command line.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -115,6 +124,10 @@ are case-insensitive. There is no `.env` file support.
 | `SYSWATCH_POLL_INTERVAL_SECONDS` | `10.0` | Seconds between collections |
 | `SYSWATCH_RETENTION_DAYS` | `30` | Age at which snapshots are pruned; `0` keeps them forever |
 | `SYSWATCH_ALERTS_ENABLED` | `true` | Whether the poller evaluates alert rules after each successful collection |
+| `SYSWATCH_AUTH_ENABLED` | `true` | Master switch for authentication. `false` opens every endpoint |
+| `SYSWATCH_SESSION_SECRET` | *(none)* | HMAC key for session tokens. **Required**; startup fails without it |
+| `SYSWATCH_SESSION_TTL_SECONDS` | `28800` | Session lifetime from login, absolute |
+| `SYSWATCH_DEV_MODE` | `false` | Drops the cookie's `Secure` flag and permits a missing secret |
 | `SYSWATCH_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to call this API |
 
 ```bash
@@ -131,9 +144,10 @@ SYSWATCH_CORS_ORIGINS=http://localhost:5173,http://192.168.1.50:5173 python run.
 
 The two default origins are both spellings of the Vite dev server — a browser
 treats `localhost` and `127.0.0.1` as different origins even on the same
-machine, so both are listed. Credentials are never allowed regardless of which
-origins are configured (see `create_app()`), since the API is unauthenticated
-and Phase 4 is where that changes.
+machine, so both are listed. Credentials **are** allowed for the configured
+origins, because the session is a cookie and the browser would otherwise send it
+on no cross-origin request. That is also why `"*"` is refused outright — see
+[Deployment](#deployment).
 
 An invalid value is rejected at startup — a non-numeric `SYSWATCH_PORT` or a
 `SYSWATCH_RETENTION_DAYS=forever` raises a `ValidationError` rather than
@@ -196,6 +210,126 @@ Six default rules are seeded by migration (CPU > 90 / > 95, memory > 90, disk
 > 90, processes > 500, net_recv rate). A rule the user deletes stays deleted —
 the seed migration only inserts names that are absent.
 
+## Authentication
+
+Every endpoint except `GET /health` and `GET /` requires a session. The agent
+knows nothing about any of this — it stays on loopback with no authentication of
+its own, which is exactly why login belongs here.
+
+```text
+POST /auth/login ─▶ Argon2id verify ─▶ session row ─▶ Set-Cookie (HttpOnly)
+                                                          │
+        every later request ◀─────────────────────────────┘
+                │
+                ▼
+   require_authenticated_user ─▶ 401
+   require_admin              ─▶ 403
+```
+
+### What is stored
+
+A session token is 256 random bits. It is returned once, in the cookie, and
+**never written down**: the `sessions` table holds `HMAC-SHA256(secret, token)`.
+Someone who reads the database learns which sessions exist but cannot mint a
+cookie for any of them, and rotating `SYSWATCH_SESSION_SECRET` invalidates every
+live session at once — the lever to pull after a leak.
+
+Passwords are Argon2id (`t=3`, `m=64 MiB`, `p=4`, RFC 9106's first recommended
+option), with the parameters pinned rather than left to the library's defaults.
+Each hash encodes its own parameters, so raising them later does not invalidate
+stored passwords.
+
+### Roles
+
+| | `viewer` | `admin` |
+| --- | --- | --- |
+| `/status`, `/snapshot(s)`, `/hosts`, `/alerts`, `GET /alert-rules` | ✅ | ✅ |
+| `POST` / `PUT` / `DELETE /alert-rules` | `403` | ✅ |
+
+`/health` stays public — it answers one question, is this process alive, and a
+load balancer asking it has no session to offer. `/status` does not, because it
+reports poll timing, the last error and agent reachability.
+
+### Creating accounts
+
+```bash
+python -m app.auth.create_admin                        # prompts for both
+python -m app.auth.create_admin --username viv --role viewer
+python -m app.auth.create_admin --username root --reset-password
+```
+
+A command rather than a `POST /setup-admin` endpoint: an endpoint that mints an
+administrator has to be switched off the moment it is first used, and the
+version still reachable in production is a well-known way to lose a system.
+
+There is deliberately **no `--password` flag**. The prompt is hidden and the
+value never enters shell history or the process list. Passwords must be at least
+12 characters and mix two of {lower case, upper case, digits, symbols}.
+
+### What ends a session
+
+- Logging out (`POST /auth/logout`)
+- Reaching `expires_at` — absolute, set at login. Activity updates
+  `last_seen_at` but does not extend it.
+- The account being disabled or deleted, checked on **every** request rather
+  than only at login
+- `SYSWATCH_SESSION_SECRET` changing
+
+Expired rows are deleted by `SessionService.prune_expired()`; expiry itself is
+enforced on read, so the sweep is housekeeping rather than a control.
+
+### Failed logins
+
+`POST /auth/login` answers the same `401` for an unknown username and a wrong
+password, and spends the same time on both — an unknown user is verified against
+a dummy hash so the response time does not become a username oracle. Ten failures
+from one address in five minutes earns a `429` with `Retry-After`; only failures
+count, and a success clears the record.
+
+The limiter is in-process: it resets on restart and each worker keeps its own.
+That is enough for a single-worker deployment and is not a substitute for one
+behind a load balancer.
+
+## Deployment
+
+The defaults assume the backend and the dashboard are reached through one origin
+and that TLS is terminated in front of this process.
+
+**Generate a secret.** There is no default, and the process refuses to start
+without one:
+
+```bash
+export SYSWATCH_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+```
+
+It must be at least 32 characters. Changing it logs everyone out, which is the
+intended emergency response and also the reason not to regenerate it on each
+deploy.
+
+**Cookies and origins.** The session cookie is `HttpOnly`, `SameSite=Lax`,
+`Secure`, `Path=/`, and carries no `Domain` attribute.
+
+| Deployment | What is needed |
+| --- | --- |
+| Dashboard and API on one origin (reverse proxy) | Nothing extra. This is the shape the defaults assume. |
+| Dashboard on a different origin | Add it to `SYSWATCH_CORS_ORIGINS`, and note that `SameSite=Lax` will not send the cookie on cross-site requests — a same-origin proxy is the supported arrangement. |
+| Local development over HTTP | `SYSWATCH_DEV_MODE=true`, which drops `Secure`. The Vite proxy already makes the browser see one origin. |
+
+`SYSWATCH_CORS_ORIGINS` must name explicit origins. `"*"` is rejected at
+startup: CORS runs with credentials enabled, and Starlette answers a wildcard
+there by echoing back whatever `Origin` asked — which would let any site a
+logged-in user visits call this API as them.
+
+**Response headers.** Every response carries `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and
+`Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`. The
+documentation UI at `/docs` is exempt from the CSP only — it loads its own
+scripts. `/docs` and `/openapi.json` are public; put them behind the proxy if
+the API surface itself is sensitive.
+
+**Do not expose the agent.** It has no authentication and binds `127.0.0.1` on
+purpose. See [the agent README](../agent/README.md#network-exposure).
+
 ## Database
 
 Three tables. `snapshots` holds the agent's nested payload flattened into
@@ -255,6 +389,20 @@ reasoning that keeps `os_version` on the snapshot.
 `PRAGMA foreign_keys=ON` is set per connection so the `ON DELETE SET NULL`
 actually fires (SQLite ignores foreign keys otherwise).
 
+### `users`
+
+`id`, `username` (unique), `password_hash` (Argon2id), `role`
+(`admin` / `viewer`), `enabled`, `created_at`, `updated_at`.
+
+### `sessions`
+
+`id`, `token_hash` (unique — `HMAC-SHA256` of the cookie value, never the value
+itself), `user_id` (FK → `users.id`, `ON DELETE CASCADE`), `expires_at`,
+`created_at`, `last_seen_at`.
+
+The cascade matters: a session that resolves to nobody would be a row the auth
+dependency has to defend against for no reason.
+
 ### Migrations
 
 ```bash
@@ -289,6 +437,11 @@ Interactive documentation is served at `/docs`, with the raw schema at
 | `GET /hosts` | Database | Still works |
 | `GET /alerts`, `/alerts/active`, `/alerts/{id}` | Database | Still works |
 | `GET`/`POST`/`PUT`/`DELETE /alert-rules` | Database | Still works |
+| `POST /auth/login`, `/auth/logout`, `GET /auth/me` | Database | Still works |
+
+Everything above except `GET /health` and `GET /` requires a session; the
+three alert-rule writes additionally require the `admin` role. See
+[Authentication](#authentication).
 
 ### `GET /`
 
@@ -546,10 +699,8 @@ Partial update — send only the fields to change; at least one is required.
 `204`. `404` for an unknown id. Open alerts for the rule survive as history with
 `ruleId` set to `null`.
 
-**These are the only write endpoints, and they are unauthenticated** — like the
-reads. Fine while the backend listens on `127.0.0.1`; it must not reach a
-network before Phase 4 adds auth. The CORS config allows `POST`/`PUT`/`DELETE`
-only from the configured dashboard origins.
+These three are the only write endpoints, and the only ones that require the
+`admin` role. Reading rules is open to any authenticated caller.
 
 ## Testing
 
@@ -572,6 +723,13 @@ HTTP transport stubbed (`tests/test_snapshot_integration.py`).
 Every test that touches the database uses an in-memory or temporary SQLite file,
 so running the suite never writes to `syswatch.db`.
 
+`conftest.py` runs the suite with `SYSWATCH_AUTH_ENABLED=false` unless a test
+asks for one of the `anon_client` / `viewer_client` / `admin_client` fixtures.
+The routes still run their real dependency chain — it resolves to an anonymous
+admin — which keeps the several hundred tests about snapshots and alerts from
+each having to arrange a login. Authentication and authorization have their own
+files (`test_auth_*.py`, `test_authorization.py`) that use the real thing.
+
 Run the suite with the agent **stopped**. No test needs it running, but
 `test_get_snapshot_connection_error` opens a real socket to
 `127.0.0.1:8080` and asserts the connection fails, so it reports a false
@@ -593,9 +751,10 @@ backend/
     app/
         alerts/       # Rule evaluator and alert engine (no SQLAlchemy)
         api/          # FastAPI routes
+        auth/         # Passwords, sessions, dependencies, rate limit, admin CLI
         client/       # HTTP client for the C++ agent
         db/           # Engine, session scope, ORM models
-        models/       # Pydantic snapshot and alert models
+        models/       # Pydantic snapshot, alert and auth models
         repositories/ # SnapshotStore / AlertRuleStore / AlertStore — the persistence boundary
         services/     # Snapshot service and background poller
     tests/

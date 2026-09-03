@@ -72,6 +72,39 @@
   gap: 16px;
 }
 
+.account {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+
+.username {
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.role {
+  color: var(--text);
+}
+
+.signOut {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.signOut:hover {
+  background: var(--border);
+  color: var(--text-strong);
+}
+
 .connection {
   display: inline-flex;
   align-items: center;
