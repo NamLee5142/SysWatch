@@ -1,0 +1,29 @@
+.indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.indicator:hover {
+  background: var(--border);
+}
+
+/* Shown at zero too — a hidden indicator and "nothing is wrong" look the same,
+   and the point is to make the second one visible. Just dimmed. */
+.quiet {
+  opacity: 0.6;
+}
+
+.active {
+  color: var(--status-down);
+  font-weight: 600;
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
