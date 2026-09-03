@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
+from app.auth.rate_limit import LoginRateLimiter
 from app.auth.service import AuthService
 from app.models.auth import Credentials, CurrentUser
 from config import get_settings
@@ -17,9 +18,37 @@ SESSION_COOKIE = "syswatch_session"
 # through the clock.
 INVALID_CREDENTIALS = "Invalid username or password"
 
+# Process-wide, so every request charges the same counters. See the module
+# docstring for what this does and does not defend against.
+login_limiter = LoginRateLimiter()
+
 
 def create_auth_service() -> AuthService:
     return AuthService()
+
+
+def client_key(request: Request) -> str:
+    """What the limiter counts against.
+
+    The source address, which behind a reverse proxy is the proxy — a
+    deployment that terminates TLS elsewhere has to forward the real address
+    and have this read it before the limit means anything there. Falls back to
+    a single shared bucket when there is no client address at all (an ASGI
+    transport with no peer), which throttles conservatively rather than not at
+    all.
+    """
+    return request.client.host if request.client else "unknown"
+
+
+def enforce_login_rate_limit(request: Request) -> None:
+    retry_after = login_limiter.retry_after(client_key(request))
+
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 # sync def so FastAPI runs the blocking database work in a threadpool
@@ -28,14 +57,24 @@ def create_auth_service() -> AuthService:
     "/auth/login",
     response_model=CurrentUser,
     summary="Exchange credentials for a session cookie",
-    responses={401: {"description": "Invalid username or password"}},
+    dependencies=[Depends(enforce_login_rate_limit)],
+    responses={
+        401: {"description": "Invalid username or password"},
+        429: {"description": "Too many failed attempts"},
+    },
 )
-def login(credentials: Credentials, response: Response):
+def login(credentials: Credentials, request: Request, response: Response):
     service = create_auth_service()
+    key = client_key(request)
 
     user = service.authenticate(credentials.username, credentials.password)
     if user is None:
+        login_limiter.record_failure(key)
         raise HTTPException(status_code=401, detail=INVALID_CREDENTIALS)
+
+    # A password that finally works clears the record, so a forgetful user
+    # is not still one typo from a lockout.
+    login_limiter.reset(key)
 
     _set_session_cookie(response, service.create_session(user))
 

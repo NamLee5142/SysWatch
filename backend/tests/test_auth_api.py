@@ -1,8 +1,11 @@
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.auth import SESSION_COOKIE
+from app.api.auth import SESSION_COOKIE, login_limiter
 from app.auth.password import hash_password
+from app.auth.rate_limit import DEFAULT_LIMIT, LoginRateLimiter
 from app.db import session as db_session
 from app.db.models import Base
 from app.main import create_app
@@ -15,6 +18,10 @@ PASSWORD = "correct horse Battery staple"
 def environment(monkeypatch):
     monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret")
     monkeypatch.delenv("SYSWATCH_DEV_MODE", raising=False)
+
+    # The limiter is process-wide, so failed logins would otherwise accumulate
+    # across tests until an unrelated one started getting 429s.
+    login_limiter.clear()
 
     db_session.dispose_engine()
     engine = db_session.init_engine("sqlite://")
@@ -216,3 +223,89 @@ def test_the_auth_routes_do_not_require_a_session_to_reach(client):
     # outside whatever protects everything else.
     assert client.post("/auth/login", json={"username": "a", "password": "b"}).status_code == 401
     assert client.get("/auth/me").status_code == 401
+
+
+# --- rate limiting ---------------------------------------------------------
+
+
+def test_repeated_failures_eventually_get_a_429(client):
+    make_user()
+
+    for _ in range(DEFAULT_LIMIT):
+        assert login(client, password="wrong password").status_code == 401
+
+    response = login(client, password="wrong password")
+
+    assert response.status_code == 429
+    assert int(response.headers["Retry-After"]) > 0
+    assert "Try again later" in response.json()["detail"]
+
+
+def test_the_limit_blocks_the_right_password_too(client):
+    make_user()
+
+    for _ in range(DEFAULT_LIMIT):
+        login(client, password="wrong password")
+
+    # Otherwise an attacker learns they guessed right by the response changing.
+    assert login(client).status_code == 429
+
+
+def test_successful_logins_are_not_counted(client):
+    make_user()
+
+    for _ in range(DEFAULT_LIMIT + 5):
+        assert login(client).status_code == 200
+
+
+def test_a_success_clears_earlier_failures(client):
+    make_user()
+
+    for _ in range(DEFAULT_LIMIT - 1):
+        login(client, password="wrong password")
+
+    assert login(client).status_code == 200
+
+    # The counter reset, so a forgetful user is not still one typo from lockout.
+    for _ in range(DEFAULT_LIMIT - 1):
+        assert login(client, password="wrong password").status_code == 401
+
+
+def test_the_limiter_counts_only_failures():
+    limiter = LoginRateLimiter(limit=2, window_seconds=60)
+
+    assert limiter.retry_after("k") is None
+    limiter.record_failure("k")
+    assert limiter.retry_after("k") is None
+    limiter.record_failure("k")
+
+    retry_after = limiter.retry_after("k")
+    assert retry_after is not None and retry_after > 0
+
+
+def test_the_limiter_is_per_key():
+    limiter = LoginRateLimiter(limit=1, window_seconds=60)
+
+    limiter.record_failure("first")
+
+    assert limiter.retry_after("first") is not None
+    assert limiter.retry_after("second") is None
+
+
+def test_the_window_expires():
+    limiter = LoginRateLimiter(limit=1, window_seconds=0.05)
+
+    limiter.record_failure("k")
+    assert limiter.retry_after("k") is not None
+
+    time.sleep(0.06)
+    assert limiter.retry_after("k") is None
+
+
+def test_resetting_a_key_forgets_its_failures():
+    limiter = LoginRateLimiter(limit=1, window_seconds=60)
+
+    limiter.record_failure("k")
+    limiter.reset("k")
+
+    assert limiter.retry_after("k") is None
