@@ -53,6 +53,25 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
+    @field_validator("cors_origins")
+    @classmethod
+    def reject_wildcard_origin(cls, value):
+        """Refuse "*" outright, rather than letting it reach the middleware.
+
+        The session travels in a cookie, so CORS runs with allow_credentials.
+        Starlette answers a wildcard in that mode by echoing back whatever
+        Origin asked, which does not mean "this data is public" — it means any
+        site a logged-in user visits can call this API as them. There is no
+        configuration where that is what someone wanted, so it fails at startup
+        instead of silently becoming the most permissive setting available.
+        """
+        if any(origin == "*" for origin in value):
+            raise ValueError(
+                "SYSWATCH_CORS_ORIGINS must name explicit origins; "
+                '"*" cannot be combined with cookie authentication'
+            )
+        return value
+
 
 def get_settings() -> Settings:
     return Settings()

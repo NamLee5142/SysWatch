@@ -71,15 +71,23 @@ def create_app() -> FastAPI:
     # a cross-origin fetch before the request reaches any route.
     app.add_middleware(
         CORSMiddleware,
+        # Never "*". Settings refuses it outright, because Starlette answers a
+        # wildcard under allow_credentials by echoing back whatever Origin
+        # asked — which is not "any origin may read public data", it is "any
+        # site may make requests as the logged-in user".
         allow_origins=get_settings().cors_origins,
-        # No credentials: the API is unauthenticated, and letting a browser
-        # attach cookies is exactly what must not happen before Phase 4 auth.
-        allow_credentials=False,
-        # The write methods are for alert-rule CRUD. They widen this from a
-        # read-only surface to a read-write one — fine on localhost, but it
-        # must be gated before the API faces a network.
+        # Required now that the session lives in a cookie: without it the
+        # browser sends the credential on no cross-origin request and accepts
+        # the Set-Cookie on none either.
+        allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE"],
-        allow_headers=["*"],
+        # Narrowed from "*". The API takes JSON bodies and a cookie the browser
+        # attaches itself; nothing else needs naming.
+        allow_headers=["Content-Type"],
+        # Only the CORS-safelisted response headers reach page JavaScript by
+        # default, and Retry-After is not one of them — without this the login
+        # form cannot tell the user how long the rate limit has to run.
+        expose_headers=["Retry-After"],
     )
 
     app.include_router(health.router)
