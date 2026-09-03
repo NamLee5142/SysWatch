@@ -165,3 +165,81 @@ class AlertRecord(Base):
             f"host_name={self.host_name!r}, state={self.state!r}, "
             f"value={self.value!r})"
         )
+
+
+class UserRecord(Base):
+    """An account that can log in to the backend.
+
+    The agent knows nothing about these: authentication lives at the backend
+    boundary, which is the whole reason the agent stays on loopback.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Unique so two accounts cannot answer to the same login, and indexed
+    # because every login looks a user up by exactly this.
+    username: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
+    # Argon2id, produced by app/auth/password.py. Never selected into an API
+    # model — CurrentUser has no field it could land in.
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 'admin' or 'viewer' — app.models.auth.Role. Text, so adding a role later
+    # is not a schema change.
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    # Checked on every authenticated request, not just at login: disabling an
+    # account has to end the sessions it already holds.
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Naive UTC, stamped by the store — the convention collected_at follows.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    def __repr__(self):
+        # Deliberately no password_hash, so a stray repr in a log or traceback
+        # cannot carry one.
+        return (
+            f"UserRecord(id={self.id!r}, username={self.username!r}, "
+            f"role={self.role!r}, enabled={self.enabled!r})"
+        )
+
+
+class SessionRecord(Base):
+    """One logged-in browser.
+
+    The raw session token is never stored. It exists in the cookie and nowhere
+    else; this row holds only an HMAC of it, so a reader of the database cannot
+    mint a cookie that impersonates anyone.
+    """
+
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # HMAC-SHA256(SESSION_SECRET, raw_token), hex. Unique because it is the
+    # lookup key for every authenticated request.
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    # CASCADE: deleting a user must not leave sessions that resolve to nobody.
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Absolute, set at login. Activity updates last_seen_at but does not move
+    # this — a session has a fixed lifetime rather than an extendable one.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        # Ending every session a user holds, on logout-everywhere or on delete.
+        Index("ix_sessions_user_id", "user_id"),
+        # The expiry sweep, which filters on this column alone.
+        Index("ix_sessions_expires_at", "expires_at"),
+    )
+
+    def __repr__(self):
+        # No token_hash: it is not the token, but it is still the lookup key.
+        return (
+            f"SessionRecord(id={self.id!r}, user_id={self.user_id!r}, "
+            f"expires_at={self.expires_at!r})"
+        )
