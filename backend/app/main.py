@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
 from app.alerts import AlertEngine
-from app.api import health, hosts, snapshot, snapshots, status
+from app.api import alerts, health, hosts, snapshot, snapshots, status
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
 from app.repositories import AlertRuleStore, AlertStore, SnapshotStore
@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(hosts.router)
     app.include_router(snapshot.router)
     app.include_router(snapshots.router)
+    app.include_router(alerts.router)
 
     @app.get("/")
     def root():
