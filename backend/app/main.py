@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
 from app.alerts import AlertEngine
-from app.api import alerts, health, hosts, snapshot, snapshots, status
+from app.api import alert_rules, alerts, health, hosts, snapshot, snapshots, status
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
 from app.repositories import AlertRuleStore, AlertStore, SnapshotStore
@@ -71,11 +71,13 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_settings().cors_origins,
-        # The API is read-only and unauthenticated. Allowing credentials would
-        # let a browser attach cookies to these requests, which is exactly what
-        # should not happen until Phase 4 adds authentication.
+        # No credentials: the API is unauthenticated, and letting a browser
+        # attach cookies is exactly what must not happen before Phase 4 auth.
         allow_credentials=False,
-        allow_methods=["GET"],
+        # The write methods are for alert-rule CRUD. They widen this from a
+        # read-only surface to a read-write one — fine on localhost, but it
+        # must be gated before the API faces a network.
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["*"],
     )
 
@@ -85,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(snapshot.router)
     app.include_router(snapshots.router)
     app.include_router(alerts.router)
+    app.include_router(alert_rules.router)
 
     @app.get("/")
     def root():

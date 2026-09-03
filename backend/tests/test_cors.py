@@ -59,17 +59,25 @@ def test_preflight_succeeds_for_an_allowed_origin(client):
     assert response.headers["access-control-allow-origin"] == DASHBOARD_ORIGIN
 
 
-def test_preflight_advertises_only_get(client):
+def test_preflight_advertises_the_write_methods(client):
     response = preflight(client, DASHBOARD_ORIGIN)
 
-    assert response.headers["access-control-allow-methods"] == "GET"
+    # GET for the reads, plus POST/PUT/DELETE for alert-rule management.
+    methods = {m.strip() for m in response.headers["access-control-allow-methods"].split(",")}
+    assert methods == {"GET", "POST", "PUT", "DELETE"}
 
 
-def test_preflight_rejects_a_write_method(client):
+def test_preflight_allows_a_write_method_from_an_allowed_origin(client):
     response = preflight(client, DASHBOARD_ORIGIN, method="POST")
 
-    # Every endpoint is read-only, so nothing should be able to preflight a POST.
-    assert response.status_code == 400
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == DASHBOARD_ORIGIN
+
+
+def test_preflight_still_rejects_a_write_method_from_an_unknown_origin(client):
+    response = preflight(client, "http://evil.example", method="POST")
+
+    assert "access-control-allow-origin" not in response.headers
 
 
 def test_credentials_are_not_allowed(client):
