@@ -1,5 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
+import { LoginRoute } from './auth/LoginRoute'
+import { ProtectedRoute } from './auth/ProtectedRoute'
 import { AppShell } from './layout/AppShell'
 import { AlertsPage } from './pages/AlertsPage'
 import { CpuPage } from './pages/CpuPage'
@@ -17,17 +19,23 @@ import { SystemPage } from './pages/SystemPage'
 export function AppRoutes() {
   return (
     <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<OverviewPage />} />
-        <Route path="cpu" element={<CpuPage />} />
-        <Route path="memory" element={<MemoryPage />} />
-        <Route path="disk" element={<DiskPage />} />
-        <Route path="processes" element={<ProcessPage />} />
-        <Route path="network" element={<NetworkPage />} />
-        <Route path="system" element={<SystemPage />} />
-        <Route path="history" element={<HistoryPage />} />
-        <Route path="alerts" element={<AlertsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+      {/* Outside the shell and outside ProtectedRoute: the shell polls
+          endpoints that now need a session, so a login page inside it
+          would fire requests it is guaranteed to get 401s for. */}
+      <Route path="/login" element={<LoginRoute />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppShell />}>
+          <Route index element={<OverviewPage />} />
+          <Route path="cpu" element={<CpuPage />} />
+          <Route path="memory" element={<MemoryPage />} />
+          <Route path="disk" element={<DiskPage />} />
+          <Route path="processes" element={<ProcessPage />} />
+          <Route path="network" element={<NetworkPage />} />
+          <Route path="system" element={<SystemPage />} />
+          <Route path="history" element={<HistoryPage />} />
+          <Route path="alerts" element={<AlertsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
       </Route>
     </Routes>
   )

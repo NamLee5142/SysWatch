@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { screen, waitFor } from '@testing-library/react'
+import { Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getActiveAlerts, getLatestSnapshot, getStatus } from '../api/client'
 import type { Snapshot, Status } from '../api/types'
+import { renderWithAuth } from '../test/renderWithAuth'
 import { AppShell } from './AppShell'
 
 vi.mock('../api/client', () => ({
@@ -33,15 +34,14 @@ function neverSettles<T>(): Promise<T> {
   return new Promise<T>(() => {})
 }
 
-function renderShell() {
-  return render(
-    <MemoryRouter initialEntries={['/']}>
-      <Routes>
-        <Route element={<AppShell />}>
-          <Route index element={<p>page content</p>} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+function renderShell(options = {}) {
+  return renderWithAuth(
+    <Routes>
+      <Route element={<AppShell />}>
+        <Route index element={<p>page content</p>} />
+      </Route>
+    </Routes>,
+    options,
   )
 }
 
