@@ -34,7 +34,8 @@ alembic upgrade head            # create the database schema
 
 The last step is not optional. The application does not create tables on
 startup, so without it every poll fails into a logged warning and the
-`/snapshots` endpoints stay empty.
+`/snapshots` endpoints stay empty. `alembic upgrade head` also seeds the six
+default alert rules.
 
 ## Running
 
@@ -113,6 +114,7 @@ are case-insensitive. There is no `.env` file support.
 | `SYSWATCH_POLLING_ENABLED` | `true` | Whether the background poller runs |
 | `SYSWATCH_POLL_INTERVAL_SECONDS` | `10.0` | Seconds between collections |
 | `SYSWATCH_RETENTION_DAYS` | `30` | Age at which snapshots are pruned; `0` keeps them forever |
+| `SYSWATCH_ALERTS_ENABLED` | `true` | Whether the poller evaluates alert rules after each successful collection |
 | `SYSWATCH_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to call this API |
 
 ```bash
@@ -154,10 +156,52 @@ Set `SYSWATCH_POLLING_ENABLED=false` to serve the API without collecting — for
 instance when running a second instance alongside one that already polls, since
 two pollers writing the same collections just contend for the same rows.
 
+## Alerts
+
+The agent collects facts; the backend decides whether those facts are an alert.
+No threshold, operator or severity ever reaches the agent, so alert policy is
+reconfigurable through the API without rebuilding it.
+
+```text
+Snapshot ─▶ AlertEngine ─▶ rule evaluation ─▶ alert state ─▶ SQLite ─▶ REST ─▶ Dashboard
+              (after a successful poll only)
+```
+
+Evaluation runs **only after a successful collection** — never when the agent
+was unreachable or the payload was malformed, so infrastructure failure cannot
+raise a storm of false alerts. Agent-down stays the responsibility of
+`GET /status`.
+
+One firing alert exists per `(rule, host)` at a time: a breach with no open
+alert opens one, a breach with an open alert updates it in place (no new row
+every tick), and a return to normal resolves it. Disabling or deleting a rule
+resolves its open alert on the next tick.
+
+Supported metrics and operators:
+
+| Metric | Unit | Meaning |
+| --- | --- | --- |
+| `cpu` | percent | `cpuInfo.usagePercent` |
+| `memory` | percent | used / total |
+| `disk` | percent | **used** percent — "almost full" is `disk gt 90` |
+| `processes` | count | `processInfo.count` |
+| `net_sent` / `net_recv` | bytes/sec | summed across interfaces |
+
+| Operator | Fires when |
+| --- | --- |
+| `gt` / `gte` | value `>` / `>=` threshold |
+| `lt` / `lte` | value `<` / `<=` threshold |
+
+Six default rules are seeded by migration (CPU > 90 / > 95, memory > 90, disk
+> 90, processes > 500, net_recv rate). A rule the user deletes stays deleted —
+the seed migration only inserts names that are absent.
+
 ## Database
 
-One table, `snapshots`, holding the agent's nested payload flattened into
-columns:
+Three tables. `snapshots` holds the agent's nested payload flattened into
+columns; `alert_rules` and `alerts` back the alert engine.
+
+### `snapshots`
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -193,6 +237,24 @@ Times are stored as **naive UTC**, because SQLite has no timezone type and would
 otherwise return a value stripped of its offset. `SnapshotStore` converts on the
 way in and re-tags on the way out, so callers only ever see UTC-aware datetimes.
 
+### `alert_rules`
+
+`id`, `name`, `metric`, `operator`, `threshold`, `severity`
+(`info` / `warning` / `critical`), `enabled`, `created_at`, `updated_at`.
+`metric` and `operator` are plain text, so a new one needs no schema change.
+
+### `alerts`
+
+`id`, `rule_id` (nullable FK → `alert_rules.id`, `ON DELETE SET NULL`),
+`host_name`, `state` (`firing` / `ok`), `value`, `triggered_at`, `resolved_at`,
+`last_seen_at`, plus a **copy** of the rule's `rule_name` / `metric` /
+`operator` / `threshold` / `severity` taken when the alert opens. The copy is
+what keeps a past alert truthful after its rule is edited or deleted — the same
+reasoning that keeps `os_version` on the snapshot.
+
+`PRAGMA foreign_keys=ON` is set per connection so the `ON DELETE SET NULL`
+actually fires (SQLite ignores foreign keys otherwise).
+
 ### Migrations
 
 ```bash
@@ -225,6 +287,8 @@ Interactive documentation is served at `/docs`, with the raw schema at
 | `GET /snapshots/series` | Database | Still works |
 | `GET /status` | Backend + poller state | `200`, reports `agent: "down"` |
 | `GET /hosts` | Database | Still works |
+| `GET /alerts`, `/alerts/active`, `/alerts/{id}` | Database | Still works |
+| `GET`/`POST`/`PUT`/`DELETE /alert-rules` | Database | Still works |
 
 ### `GET /`
 
@@ -435,6 +499,58 @@ An empty `items` list is a `200`, not a `404` — a fresh database is a valid
 state, and the dashboard renders an empty selector rather than an error page
 for it.
 
+### `GET /alerts`
+
+Alert history, newest first. `{"items": [...], "count": n}`, where `count` is
+the total ignoring paging. Filters: `host`, `state` (`firing` / `ok`),
+`rule_id`, `since`, `until` (on `triggered_at`), `limit` (1–1000), `offset`. A
+window with `since` after `until` is a `422`.
+
+Each alert carries the copied rule fields (`ruleName`, `metric`, `operator`,
+`threshold`, `severity`) alongside `ruleId` (which is `null` once the rule is
+deleted), `hostName`, `state`, `value`, `triggeredAt`, `resolvedAt`,
+`lastSeenAt`.
+
+### `GET /alerts/active`
+
+Just the firing alerts, newest `triggeredAt` first. `{"items": [...]}` — no
+`count`, there are never many. Optional `host` filter.
+
+### `GET /alerts/{id}`
+
+One alert. `404` when the id is unknown.
+
+### `GET /alert-rules`
+
+Every configured rule, newest first. `{"items": [...]}`.
+
+### `POST /alert-rules`
+
+Create a rule. `201` with the stored rule. Body:
+
+```json
+{"name": "CPU critical", "metric": "cpu", "operator": "gt", "threshold": 95,
+ "severity": "critical", "enabled": true}
+```
+
+`severity` defaults to `warning`, `enabled` to `true`. A blank name, an unknown
+metric or operator, or a non-finite threshold is a `422`.
+
+### `PUT /alert-rules/{id}`
+
+Partial update — send only the fields to change; at least one is required.
+`404` for an unknown id, `422` for an invalid value.
+
+### `DELETE /alert-rules/{id}`
+
+`204`. `404` for an unknown id. Open alerts for the rule survive as history with
+`ruleId` set to `null`.
+
+**These are the only write endpoints, and they are unauthenticated** — like the
+reads. Fine while the backend listens on `127.0.0.1`; it must not reach a
+network before Phase 4 adds auth. The CORS config allows `POST`/`PUT`/`DELETE`
+only from the configured dashboard origins.
+
 ## Testing
 
 ```bash
@@ -447,9 +563,11 @@ python -m pytest -v       # per-test names
 directory.
 
 The suite covers the models, `AgentClient`, `SnapshotService`, the API layer,
-configuration loading, the database layer (engine, ORM model, migrations,
-`SnapshotStore`), the poller, and an end-to-end pass through the real stack with
-only the agent's HTTP transport stubbed (`tests/test_snapshot_integration.py`).
+configuration loading, the database layer (engine, ORM models, migrations,
+`SnapshotStore`, `AlertRuleStore`, `AlertStore`), the poller, the alert
+evaluator and engine (including the full state machine against a real
+database), and an end-to-end pass through the real stack with only the agent's
+HTTP transport stubbed (`tests/test_snapshot_integration.py`).
 
 Every test that touches the database uses an in-memory or temporary SQLite file,
 so running the suite never writes to `syswatch.db`.
@@ -473,11 +591,12 @@ upgrade from breaking the app.
 backend/
     alembic/          # Migration environment and versions
     app/
+        alerts/       # Rule evaluator and alert engine (no SQLAlchemy)
         api/          # FastAPI routes
         client/       # HTTP client for the C++ agent
         db/           # Engine, session scope, ORM models
-        models/       # Pydantic snapshot models
-        repositories/ # SnapshotStore, the persistence boundary
+        models/       # Pydantic snapshot and alert models
+        repositories/ # SnapshotStore / AlertRuleStore / AlertStore — the persistence boundary
         services/     # Snapshot service and background poller
     tests/
     alembic.ini       # Migration config; its database URL is intentionally blank
