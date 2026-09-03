@@ -12,6 +12,7 @@ from app.client import AgentClient
 from app.db import dispose_engine, init_engine
 from app.repositories import AlertRuleStore, AlertStore, SnapshotStore
 from app.security import SecurityHeadersMiddleware, verify_security_configuration
+from app.spa import mount_dashboard
 from app.services.snapshot_poller import SnapshotPoller
 from app.services.snapshot_service import SnapshotService
 from config import get_settings
@@ -77,6 +78,11 @@ API_PREFIX = "/api"
 
 
 def create_app() -> FastAPI:
+    # Here as well as in the lifespan: create_app() runs at import, and the
+    # dashboard mount below logs during it. Without this those messages are
+    # emitted before logging is configured and vanish.
+    app_logging.configure_logging()
+
     # debug stays off: FastAPI's debug mode returns a traceback to the
     # caller, which hands out file paths, local variables and library
     # versions to anyone who can provoke a 500.
@@ -132,8 +138,10 @@ def create_app() -> FastAPI:
     # The alert-rule writes carry require_admin on the routes themselves.
     app.include_router(alert_rules.router, prefix=API_PREFIX, dependencies=protected)
 
-    # No route at "/": that path belongs to the dashboard, which the next
-    # commit mounts here. Service identity lives at /api/health.
+    # Last, so every /api route is matched first. Everything left over is the
+    # dashboard's — including "/", which is why no route claims it.
+    mount_dashboard(app, get_settings().dashboard_dir)
+
     return app
 
 

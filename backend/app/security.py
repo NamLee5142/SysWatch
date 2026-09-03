@@ -17,10 +17,26 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
 }
 
-# 'none' by default because a JSON API needs nothing: no scripts, no styles, no
-# images, no frames. The dashboard is served separately and needs a policy of
-# its own, which belongs with whatever serves it rather than here.
+# 'none' because a JSON API needs nothing: no scripts, no styles, no images, no
+# frames. Anything that can load a resource is a capability this surface has no
+# use for.
 API_CONTENT_SECURITY_POLICY = "default-src 'none'; frame-ancestors 'none'"
+
+# The dashboard is served from this process now, and 'none' would forbid it
+# loading its own bundle — the page renders blank with a console full of CSP
+# violations. Everything it needs comes from this origin, so 'self' is the whole
+# policy, minus one concession: 'unsafe-inline' for styles, because the chart
+# library sets them on elements it renders.
+DASHBOARD_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'none'; "
+    "form-action 'none'"
+)
 
 MIN_SESSION_SECRET_LENGTH = 32
 
@@ -53,7 +69,16 @@ class SecurityHeadersMiddleware:
                 for name, value in SECURITY_HEADERS.items():
                     headers.setdefault(name, value)
                 if path not in DOCUMENTATION_PATHS:
-                    headers.setdefault("Content-Security-Policy", API_CONTENT_SECURITY_POLICY)
+                    # Chosen by what is being sent rather than by path: the
+                    # same process answers JSON and serves an HTML application,
+                    # and they need opposite policies.
+                    content_type = headers.get("content-type", "")
+                    policy = (
+                        DASHBOARD_CONTENT_SECURITY_POLICY
+                        if content_type.startswith("text/html")
+                        else API_CONTENT_SECURITY_POLICY
+                    )
+                    headers.setdefault("Content-Security-Policy", policy)
 
             await send(message)
 

@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # How long a session lives from login. Absolute, not sliding: activity
     # updates last_seen_at but does not extend this.
     session_ttl_seconds: int = 28800  # 8 hours
+    # Directory holding the built dashboard (dashboard/dist). Empty disables
+    # static serving entirely, which is what a developer running Vite wants:
+    # the backend then answers the API and nothing else.
+    dashboard_dir: str = ""
     # Relaxes what production must not relax — currently the session cookie's
     # Secure flag, so the dashboard works over plain HTTP in development.
     # Defaults false so the insecure state is the one you opt into.
