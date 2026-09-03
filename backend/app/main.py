@@ -11,6 +11,7 @@ from app.auth.dependencies import require_authenticated_user
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
 from app.repositories import AlertRuleStore, AlertStore, SnapshotStore
+from app.security import SecurityHeadersMiddleware, verify_security_configuration
 from app.services.snapshot_poller import SnapshotPoller
 from app.services.snapshot_service import SnapshotService
 from config import get_settings
@@ -42,6 +43,11 @@ async def lifespan(app: FastAPI):
 
     settings = get_settings()
 
+    # Before anything else: a process that cannot authenticate safely should
+    # fail loudly here rather than serve traffic and find out later.
+    for warning in verify_security_configuration(settings):
+        logger.warning(warning)
+
     # The engine holds a connection pool and is created once here rather than
     # per request, which is what get_settings() being uncached would otherwise
     # encourage.
@@ -65,7 +71,12 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    # debug stays off: FastAPI's debug mode returns a traceback to the
+    # caller, which hands out file paths, local variables and library
+    # versions to anyone who can provoke a 500.
     app = FastAPI(title="SysWatch Backend", lifespan=lifespan)
+
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # Without this the dashboard cannot read the API at all: the browser blocks
     # a cross-origin fetch before the request reaches any route.

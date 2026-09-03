@@ -147,8 +147,11 @@ activemq-data/
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environments. The .env glob matters now that SYSWATCH_SESSION_SECRET is a
+# real secret people will keep in a file rather than retype.
 .env
+.env.*
+*.env
 .envrc
 .venv
 env/

@@ -20,7 +20,7 @@ PASSWORD = "correct horse Battery staple"
 
 @pytest.fixture(autouse=True)
 def environment(monkeypatch):
-    monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret")
+    monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret-long-enough-for-the-startup-check")
     # conftest turns authentication off for the suite at large; this file is
     # entirely about it.
     monkeypatch.setenv("SYSWATCH_AUTH_ENABLED", "true")

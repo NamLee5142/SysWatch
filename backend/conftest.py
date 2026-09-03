@@ -50,7 +50,7 @@ def default_auth_disabled(request, monkeypatch):
 def auth_enabled(monkeypatch):
     """Opt back in to real authentication, with a secret to sign sessions."""
     monkeypatch.setenv("SYSWATCH_AUTH_ENABLED", "true")
-    monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret")
+    monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret-long-enough-for-the-startup-check")
     monkeypatch.delenv("SYSWATCH_DEV_MODE", raising=False)
 
 

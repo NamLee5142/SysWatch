@@ -21,7 +21,7 @@ PASSWORD = "correct horse Battery staple"
 
 @pytest.fixture(autouse=True)
 def environment(monkeypatch):
-    monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret")
+    monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret-long-enough-for-the-startup-check")
     monkeypatch.setenv("SYSWATCH_AUTH_ENABLED", "true")
 
     db_session.dispose_engine()
