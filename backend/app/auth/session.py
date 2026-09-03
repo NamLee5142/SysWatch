@@ -9,6 +9,13 @@ import hmac
 import secrets
 from hashlib import sha256
 
+# The cookie the browser holds. Named rather than a bare "session": cookies
+# are scoped by host and not by port, so anything else served from localhost
+# during development would collide with a generic name. It lives here rather
+# than with the route because it names the session mechanism, and the auth
+# dependencies need it without importing the API layer.
+SESSION_COOKIE = "syswatch_session"
+
 # 256 bits of randomness. token_urlsafe encodes it base64url, so the value is
 # cookie-safe without escaping.
 TOKEN_BYTES = 32

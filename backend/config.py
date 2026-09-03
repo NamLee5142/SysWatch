@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     retention_days: int = 30
     # Whether the poller evaluates alert rules after each successful collection.
     alerts_enabled: bool = True
+    # Master switch for authentication. Defaults true so the insecure state is
+    # the one you opt into; false restores the anonymous API of Sprint 8 and is
+    # meant for local development against a throwaway database.
+    auth_enabled: bool = True
     # HMAC key for session-token hashing. No default on purpose: a shipped one
     # would be a published key. Startup enforcement lands with the rest of the
     # security hardening; until then an empty value only breaks sessions.

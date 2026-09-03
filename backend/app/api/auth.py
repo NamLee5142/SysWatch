@@ -1,16 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
+from app.auth.dependencies import require_authenticated_user
 from app.auth.rate_limit import LoginRateLimiter
 from app.auth.service import AuthService
+from app.auth.session import SESSION_COOKIE
 from app.models.auth import Credentials, CurrentUser
 from config import get_settings
 
 router = APIRouter()
-
-# Named rather than a bare "session": cookies are scoped by host, not by port,
-# so anything else served from localhost during development would collide with
-# a generic name.
-SESSION_COOKIE = "syswatch_session"
 
 # One message for every way a login can fail. The service already spends the
 # same time on an unknown username as on a wrong password; saying "no such user"
@@ -112,12 +109,7 @@ def logout(request: Request):
     summary="Who the caller is",
     responses={401: {"description": "Not authenticated"}},
 )
-def me(request: Request):
-    current = create_auth_service().resolve_session(request.cookies.get(SESSION_COOKIE))
-
-    if current is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+def me(current: CurrentUser = Depends(require_authenticated_user)):
     return current
 
 
