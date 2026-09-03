@@ -161,3 +161,12 @@ export interface AlertPage {
 export interface AlertList {
   items: Alert[]
 }
+
+// See backend/app/models/auth.py. Two fields, deliberately: the model there has
+// no password hash to leak, so there is none to model here either.
+export type Role = 'admin' | 'viewer'
+
+export interface CurrentUser {
+  username: string
+  role: Role
+}

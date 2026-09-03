@@ -6,6 +6,7 @@ import type {
   AlertRuleList,
   AlertState,
   Bucket,
+  CurrentUser,
   HostList,
   Metric,
   Operator,
@@ -30,13 +31,28 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 export class ApiError extends Error {
   readonly status: number
   readonly detail: unknown
+  /** Seconds from a 429's Retry-After header, when the backend sent one. The
+   *  backend adds Retry-After to expose_headers precisely so this is readable
+   *  cross-origin; without it a rate-limited login could only say "later". */
+  readonly retryAfter?: number
 
-  constructor(status: number, detail: unknown) {
+  constructor(status: number, detail: unknown, retryAfter?: number) {
     super(formatDetail(status, detail))
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.retryAfter = retryAfter
   }
+}
+
+function parseRetryAfter(response: Response): number | undefined {
+  const header = response.headers.get('Retry-After')
+  if (header === null) {
+    return undefined
+  }
+
+  const seconds = Number(header)
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined
 }
 
 /** The request never reached the backend at all: connection refused, DNS
@@ -105,12 +121,35 @@ interface RequestOptions {
   // Serialised to a JSON request body. Only meaningful for POST and PUT.
   body?: unknown
   signal?: AbortSignal
+  // Set on the login call. A 401 there means "those credentials are wrong",
+  // which the form shows inline — it must not be mistaken for "the session
+  // you were using has ended" and bounce the page to a login it is already on.
+  expectsUnauthorized?: boolean
+}
+
+type UnauthorizedHandler = () => void
+
+let onUnauthorized: UnauthorizedHandler | null = null
+
+/**
+ * Register what happens when the backend says a session is no longer good.
+ *
+ * Any of the ~5 polls a page has running can be the one that discovers a
+ * session expired, and each of them handling it would mean five redirects and
+ * five chances to get it wrong. They all funnel here instead; AuthContext is
+ * what registers a handler.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  onUnauthorized = handler
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { params, method = 'GET', body, signal } = options
+  const { params, method = 'GET', body, signal, expectsUnauthorized = false } = options
 
-  const init: RequestInit = { method, signal }
+  // The session is an HttpOnly cookie the browser holds. Same-origin requests
+  // would send it anyway, but a production build talking to VITE_API_BASE_URL
+  // on another origin would not without this.
+  const init: RequestInit = { method, signal, credentials: 'include' }
   if (body !== undefined) {
     init.body = JSON.stringify(body)
     init.headers = { 'Content-Type': 'application/json' }
@@ -131,7 +170,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
-    throw new ApiError(response.status, await parseErrorBody(response))
+    if (response.status === 401 && !expectsUnauthorized) {
+      onUnauthorized?.()
+    }
+    throw new ApiError(response.status, await parseErrorBody(response), parseRetryAfter(response))
   }
 
   // DELETE answers 204 with no body; parsing it as JSON would throw.
@@ -240,4 +282,25 @@ export function updateAlertRule(
 
 export function deleteAlertRule(id: number, signal?: AbortSignal): Promise<void> {
   return request<void>(`/alert-rules/${id}`, { method: 'DELETE', signal })
+}
+
+
+export function login(username: string, password: string, signal?: AbortSignal): Promise<CurrentUser> {
+  return request<CurrentUser>('/auth/login', {
+    method: 'POST',
+    body: { username, password },
+    signal,
+    // A 401 here is a wrong password, not an ended session.
+    expectsUnauthorized: true,
+  })
+}
+
+export function logout(signal?: AbortSignal): Promise<void> {
+  return request<void>('/auth/logout', { method: 'POST', signal })
+}
+
+export function getMe(signal?: AbortSignal): Promise<CurrentUser> {
+  // Also 401s for a caller who has simply never logged in, which is how the
+  // app tells "no session" from "backend unreachable" on first load.
+  return request<CurrentUser>('/auth/me', { signal, expectsUnauthorized: true })
 }

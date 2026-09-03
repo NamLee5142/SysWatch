@@ -11,8 +11,12 @@ import {
   getLatestSnapshot,
   getSnapshot,
   getSnapshotSeries,
+  getMe,
   getStatus,
   listAlertRules,
+  login,
+  logout,
+  setUnauthorizedHandler,
   listSnapshots,
   updateAlertRule,
 } from './client'
@@ -204,6 +208,83 @@ describe('API client', () => {
     await expect(
       createAlertRule({ name: 'x', metric: 'cpu', operator: 'gt', threshold: Infinity }),
     ).rejects.toMatchObject({ name: 'ApiError', status: 422, message: 'Input should be a finite number' })
+  })
+
+  it('sends credentials on every request so the session cookie travels', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [] }))
+
+    await getHosts()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    // Same-origin would send it anyway; a production build pointed at
+    // VITE_API_BASE_URL on another origin would not.
+    expect(init).toMatchObject({ credentials: 'include' })
+  })
+
+  it('notifies the unauthorized handler when a session stops working', async () => {
+    const handler = vi.fn()
+    setUnauthorizedHandler(handler)
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ detail: 'Not authenticated' }, 401))
+
+    await expect(getHosts()).rejects.toBeInstanceOf(ApiError)
+
+    expect(handler).toHaveBeenCalledOnce()
+    setUnauthorizedHandler(null)
+  })
+
+  it('does not notify it for a rejected login', async () => {
+    const handler = vi.fn()
+    setUnauthorizedHandler(handler)
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ detail: 'Invalid username or password' }, 401))
+
+    await expect(login('root', 'wrong')).rejects.toBeInstanceOf(ApiError)
+
+    // A wrong password is not an ended session; treating it as one would ask
+    // the app to redirect to the login page it is already showing.
+    expect(handler).not.toHaveBeenCalled()
+    setUnauthorizedHandler(null)
+  })
+
+  it('does not notify it for a first-load /auth/me', async () => {
+    const handler = vi.fn()
+    setUnauthorizedHandler(handler)
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ detail: 'Not authenticated' }, 401))
+
+    await expect(getMe()).rejects.toBeInstanceOf(ApiError)
+
+    // "Never logged in" is the normal first visit, not a session ending.
+    expect(handler).not.toHaveBeenCalled()
+    setUnauthorizedHandler(null)
+  })
+
+  it('reads Retry-After off a 429', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Too many failed login attempts.' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '42' },
+      }),
+    )
+
+    await expect(login('root', 'wrong')).rejects.toMatchObject({ status: 429, retryAfter: 42 })
+  })
+
+  it('leaves retryAfter undefined when the header is absent or nonsense', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ detail: 'nope' }, 429))
+    await expect(login('root', 'wrong')).rejects.toMatchObject({ retryAfter: undefined })
+
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('{}', { status: 429, headers: { 'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT' } }),
+    )
+    // The date form of Retry-After is valid HTTP but not a number of seconds;
+    // better undefined than NaN in a message.
+    await expect(login('root', 'wrong')).rejects.toMatchObject({ retryAfter: undefined })
+  })
+
+  it('logs out with a POST that tolerates a 204', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
+
+    await expect(logout()).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }))
   })
 
   it('does not attach a JSON body or header to a GET', async () => {
