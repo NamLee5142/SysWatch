@@ -1,8 +1,18 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getActiveAlerts, getAlerts, listAlertRules } from '../api/client'
+import {
+  ApiError,
+  createAlertRule,
+  deleteAlertRule,
+  getActiveAlerts,
+  getAlerts,
+  listAlertRules,
+  updateAlertRule,
+} from '../api/client'
 import type { Alert, AlertRule } from '../api/types'
+import { renderWithAuth, TEST_ADMIN, TEST_VIEWER } from '../test/renderWithAuth'
 import { AlertsPage } from './AlertsPage'
 
 vi.mock('../api/client', async (importOriginal) => {
@@ -12,6 +22,9 @@ vi.mock('../api/client', async (importOriginal) => {
     getActiveAlerts: vi.fn(),
     getAlerts: vi.fn(),
     listAlertRules: vi.fn(),
+    createAlertRule: vi.fn(),
+    updateAlertRule: vi.fn(),
+    deleteAlertRule: vi.fn(),
   }
 })
 
@@ -61,13 +74,16 @@ beforeEach(() => {
   vi.mocked(getActiveAlerts).mockReset()
   vi.mocked(getAlerts).mockReset()
   vi.mocked(listAlertRules).mockReset()
+  vi.mocked(createAlertRule).mockReset()
+  vi.mocked(updateAlertRule).mockReset()
+  vi.mocked(deleteAlertRule).mockReset()
 })
 
 describe('AlertsPage', () => {
   it('renders a firing alert with its value and threshold in the metric unit', async () => {
     resolveAll()
 
-    render(<AlertsPage />)
+    renderWithAuth(<AlertsPage />)
 
     const row = await screen.findByRole('row', { name: /CPU usage critical/ })
     expect(within(row).getByText('Critical')).toBeInTheDocument()
@@ -82,7 +98,7 @@ describe('AlertsPage', () => {
     vi.mocked(getAlerts).mockResolvedValue({ items: [], count: 0 })
     vi.mocked(listAlertRules).mockResolvedValue({ items: [] })
 
-    render(<AlertsPage />)
+    renderWithAuth(<AlertsPage />)
 
     const heading = await screen.findByRole('heading', { name: /Active/ })
     expect(heading).toHaveTextContent('2')
@@ -93,7 +109,7 @@ describe('AlertsPage', () => {
     vi.mocked(getAlerts).mockResolvedValue({ items: [], count: 0 })
     vi.mocked(listAlertRules).mockResolvedValue({ items: [] })
 
-    render(<AlertsPage />)
+    renderWithAuth(<AlertsPage />)
 
     expect(await screen.findByText('No active alerts.')).toBeInTheDocument()
   })
@@ -106,7 +122,7 @@ describe('AlertsPage', () => {
     })
     vi.mocked(listAlertRules).mockResolvedValue({ items: [] })
 
-    render(<AlertsPage />)
+    renderWithAuth(<AlertsPage />)
 
     const row = await screen.findByRole('row', { name: /Memory usage high/ })
     expect(within(row).getByText('Resolved')).toBeInTheDocument()
@@ -119,7 +135,7 @@ describe('AlertsPage', () => {
       items: [{ ...RULE, name: 'Process count high', metric: 'processes', operator: 'gt', threshold: 500, enabled: false }],
     })
 
-    render(<AlertsPage />)
+    renderWithAuth(<AlertsPage />)
 
     const row = await screen.findByRole('row', { name: /Process count high/ })
     expect(within(row).getByText('Process count')).toBeInTheDocument()
@@ -132,7 +148,7 @@ describe('AlertsPage', () => {
     vi.mocked(getAlerts).mockResolvedValue({ items: [], count: 0 })
     vi.mocked(listAlertRules).mockResolvedValue({ items: [] })
 
-    render(<AlertsPage />)
+    renderWithAuth(<AlertsPage />)
 
     expect(await screen.findByText('Loading active alerts')).toBeInTheDocument()
   })
@@ -142,9 +158,130 @@ describe('AlertsPage', () => {
     vi.mocked(getAlerts).mockResolvedValue({ items: [], count: 0 })
     vi.mocked(listAlertRules).mockResolvedValue({ items: [] })
 
-    render(<AlertsPage />)
+    renderWithAuth(<AlertsPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load active alerts.')).toBeInTheDocument())
     expect(screen.queryByText('Loading active alerts')).not.toBeInTheDocument()
+  })
+})
+
+
+// --- role-aware rule controls ------------------------------------------------
+
+describe('AlertsPage rule controls', () => {
+  const RULES = { items: [RULE] }
+
+  function quietAlerts() {
+    vi.mocked(getActiveAlerts).mockResolvedValue({ items: [] })
+    vi.mocked(getAlerts).mockResolvedValue({ items: [], count: 0 })
+    vi.mocked(listAlertRules).mockResolvedValue(RULES)
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('offers no rule controls to a viewer', async () => {
+    quietAlerts()
+
+    renderWithAuth(<AlertsPage />, { user: TEST_VIEWER })
+
+    await screen.findByRole('row', { name: /CPU usage critical/ })
+    expect(screen.queryByRole('button', { name: 'Add rule' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+  })
+
+  it('offers them to an admin', async () => {
+    quietAlerts()
+
+    renderWithAuth(<AlertsPage />, { user: TEST_ADMIN })
+
+    await screen.findByRole('row', { name: /CPU usage critical/ })
+    expect(screen.getByRole('button', { name: 'Add rule' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Disable' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+  })
+
+  it('creates a rule and refreshes the list', async () => {
+    quietAlerts()
+    vi.mocked(createAlertRule).mockResolvedValue(RULE)
+
+    renderWithAuth(<AlertsPage />, { user: TEST_ADMIN })
+    await userEvent.click(await screen.findByRole('button', { name: 'Add rule' }))
+    await userEvent.type(screen.getByLabelText('Name'), 'Disk full')
+    await userEvent.selectOptions(screen.getByLabelText('Metric'), 'disk')
+    await userEvent.click(screen.getByRole('button', { name: 'Create rule' }))
+
+    await waitFor(() =>
+      expect(createAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Disk full', metric: 'disk', operator: 'gt', threshold: 90 }),
+      ),
+    )
+    // Waiting up to five seconds for the poll to show your own click reads as
+    // the click not having worked.
+    expect(listAlertRules).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(screen.queryByLabelText('Name')).not.toBeInTheDocument())
+  })
+
+  it('toggles a rule with a partial update', async () => {
+    quietAlerts()
+    vi.mocked(updateAlertRule).mockResolvedValue({ ...RULE, enabled: false })
+
+    renderWithAuth(<AlertsPage />, { user: TEST_ADMIN })
+    await userEvent.click(await screen.findByRole('button', { name: 'Disable' }))
+
+    await waitFor(() => expect(updateAlertRule).toHaveBeenCalledWith(RULE.id, { enabled: false }))
+  })
+
+  it('asks before deleting, and does nothing if refused', async () => {
+    quietAlerts()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    renderWithAuth(<AlertsPage />, { user: TEST_ADMIN })
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+
+    // Deleting a rule orphans its alert history; it should not happen on one
+    // stray click.
+    expect(window.confirm).toHaveBeenCalled()
+    expect(deleteAlertRule).not.toHaveBeenCalled()
+  })
+
+  it('deletes when confirmed', async () => {
+    quietAlerts()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(deleteAlertRule).mockResolvedValue(undefined)
+
+    renderWithAuth(<AlertsPage />, { user: TEST_ADMIN })
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(deleteAlertRule).toHaveBeenCalledWith(RULE.id))
+  })
+
+  it('explains a 403 rather than showing a generic failure', async () => {
+    quietAlerts()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(deleteAlertRule).mockRejectedValue(new ApiError(403, 'Administrator access required'))
+
+    renderWithAuth(<AlertsPage />, { user: TEST_ADMIN })
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+
+    // Hiding the controls is a courtesy; require_admin on the backend is what
+    // actually refuses. Anyone who gets here should be told which it was.
+    expect(await screen.findByRole('alert')).toHaveTextContent('Only an admin can change alert rules.')
+  })
+
+  it('keeps the form open when creation fails', async () => {
+    quietAlerts()
+    vi.mocked(createAlertRule).mockRejectedValue(new ApiError(422, 'Input should be a finite number'))
+
+    renderWithAuth(<AlertsPage />, { user: TEST_ADMIN })
+    await userEvent.click(await screen.findByRole('button', { name: 'Add rule' }))
+    await userEvent.type(screen.getByLabelText('Name'), 'Bad rule')
+    await userEvent.click(screen.getByRole('button', { name: 'Create rule' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Input should be a finite number')
+    // Closing it would throw away what they typed.
+    expect(screen.getByLabelText('Name')).toHaveValue('Bad rule')
   })
 })

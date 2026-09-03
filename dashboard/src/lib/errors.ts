@@ -53,3 +53,30 @@ export function describeLoginError(error: unknown): string {
 
   return 'Something went wrong signing in.'
 }
+
+
+/**
+ * Maps a failed alert-rule change to something the person can act on.
+ *
+ * The 403 case is the one that matters: the dashboard hides these controls
+ * from a viewer, but hiding is not what stops them — the backend refuses
+ * regardless. Anyone who reaches this message has got past the hiding, and
+ * telling them why is better than a generic failure.
+ */
+export function describeRuleError(error: unknown): string {
+  if (error instanceof NetworkError) {
+    return "Can't reach the backend. Check that it's running."
+  }
+
+  if (error instanceof ApiError) {
+    if (error.status === 403) {
+      return 'Only an admin can change alert rules.'
+    }
+    if (error.status === 404) {
+      return 'That rule no longer exists.'
+    }
+    return error.message
+  }
+
+  return 'Unable to save the change.'
+}
