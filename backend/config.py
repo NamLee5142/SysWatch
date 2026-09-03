@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     retention_days: int = 30
     # Whether the poller evaluates alert rules after each successful collection.
     alerts_enabled: bool = True
+    # HMAC key for session-token hashing. No default on purpose: a shipped one
+    # would be a published key. Startup enforcement lands with the rest of the
+    # security hardening; until then an empty value only breaks sessions.
+    session_secret: str = ""
+    # How long a session lives from login. Absolute, not sliding: activity
+    # updates last_seen_at but does not extend this.
+    session_ttl_seconds: int = 28800  # 8 hours
     # Browser origins allowed to call this API. Both spellings of the Vite dev
     # server are listed because a browser treats them as different origins.
     cors_origins: Annotated[list[str], NoDecode] = [
