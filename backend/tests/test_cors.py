@@ -18,7 +18,7 @@ def clean_env(monkeypatch):
 def client(clean_env):
     # Built per test rather than at import: create_app() reads the origins once,
     # so an app made before monkeypatch would carry the wrong ones.
-    return TestClient(create_app())
+    return TestClient(create_app(), base_url="http://testserver/api")
 
 
 def preflight(client, origin, method="GET"):
@@ -152,7 +152,7 @@ def test_a_wildcard_among_real_origins_is_refused_too(clean_env):
 
 def test_origins_can_be_replaced_by_env(clean_env):
     clean_env.setenv("SYSWATCH_CORS_ORIGINS", "http://dash.internal")
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://testserver/api")
 
     allowed = client.get("/health", headers={"Origin": "http://dash.internal"})
     default = client.get("/health", headers={"Origin": DASHBOARD_ORIGIN})

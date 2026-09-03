@@ -24,7 +24,7 @@ from app.services.snapshot_service import SnapshotService
 from config import get_settings
 
 app = create_app()
-client = TestClient(app)
+client = TestClient(app, base_url="http://testserver/api")
 
 
 @pytest.fixture(autouse=True)

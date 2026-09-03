@@ -39,7 +39,6 @@ ADMIN_ONLY_ROUTES = [
 
 PUBLIC_ROUTES = [
     ("GET", "/health"),
-    ("GET", "/"),
 ]
 
 

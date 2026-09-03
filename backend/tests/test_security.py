@@ -33,7 +33,7 @@ def client(database):
     ],
 )
 def test_every_response_carries_the_security_headers(client, header, value):
-    assert client.get("/health").headers[header] == value
+    assert client.get("/api/health").headers[header] == value
 
 
 def test_the_headers_are_on_error_responses_too(client):

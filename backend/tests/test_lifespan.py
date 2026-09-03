@@ -82,15 +82,14 @@ def test_poller_collects_while_the_app_runs(monkeypatch, quiet_poller):
     with TestClient(app) as client:
         # Any request gives the loop a chance to tick.
         for _ in range(5):
-            client.get("/health")
+            client.get("/api/health")
 
     assert quiet_poller.calls >= 1
 
 
 def test_requests_still_work_during_lifespan(quiet_poller):
     with TestClient(create_app()) as client:
-        assert client.get("/health").status_code == 200
-        assert client.get("/").json() == {"service": "syswatch-backend"}
+        assert client.get("/api/health").status_code == 200
 
 
 def test_app_does_not_use_deprecated_event_handlers(quiet_poller):

@@ -70,6 +70,12 @@ async def lifespan(app: FastAPI):
         logger.info("Shutting down SysWatch Backend")
 
 
+# Everything the backend answers hangs off this. The dashboard owns every
+# other path, so the split has to be a prefix rather than a route-by-route
+# arrangement someone can forget to follow.
+API_PREFIX = "/api"
+
+
 def create_app() -> FastAPI:
     # debug stays off: FastAPI's debug mode returns a traceback to the
     # caller, which hands out file paths, local variables and library
@@ -101,10 +107,13 @@ def create_app() -> FastAPI:
         expose_headers=["Retry-After"],
     )
 
-    app.include_router(health.router)
+    # Every route lives under /api so the dashboard can own every other
+    # path. Without the prefix, GET /alerts is ambiguous: it is both this
+    # API's alert list and the page a browser deep-links to.
+    app.include_router(health.router, prefix=API_PREFIX)
     # Before the protected routers, and itself unprotected: this is where a
     # caller with no session goes to get one.
-    app.include_router(auth.router)
+    app.include_router(auth.router, prefix=API_PREFIX)
     # Everything past this point needs a session. /health stays public so a
     # load balancer can ask whether the process is alive; /status does not,
     # because it reports poll timing, the last error and whether the agent is
@@ -115,18 +124,16 @@ def create_app() -> FastAPI:
     # this list on purpose.
     protected = [Depends(require_authenticated_user)]
 
-    app.include_router(status.router, dependencies=protected)
-    app.include_router(hosts.router, dependencies=protected)
-    app.include_router(snapshot.router, dependencies=protected)
-    app.include_router(snapshots.router, dependencies=protected)
-    app.include_router(alerts.router, dependencies=protected)
+    app.include_router(status.router, prefix=API_PREFIX, dependencies=protected)
+    app.include_router(hosts.router, prefix=API_PREFIX, dependencies=protected)
+    app.include_router(snapshot.router, prefix=API_PREFIX, dependencies=protected)
+    app.include_router(snapshots.router, prefix=API_PREFIX, dependencies=protected)
+    app.include_router(alerts.router, prefix=API_PREFIX, dependencies=protected)
     # The alert-rule writes carry require_admin on the routes themselves.
-    app.include_router(alert_rules.router, dependencies=protected)
+    app.include_router(alert_rules.router, prefix=API_PREFIX, dependencies=protected)
 
-    @app.get("/")
-    def root():
-        return {"service": "syswatch-backend"}
-
+    # No route at "/": that path belongs to the dashboard, which the next
+    # commit mounts here. Service identity lives at /api/health.
     return app
 
 

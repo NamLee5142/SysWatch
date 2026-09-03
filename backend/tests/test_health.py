@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 app = create_app()
-client = TestClient(app)
+client = TestClient(app, base_url="http://testserver/api")
 
 
 def test_health():

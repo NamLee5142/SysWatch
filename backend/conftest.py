@@ -99,7 +99,7 @@ def _client(app):
     # https, because outside dev_mode the session cookie carries Secure and
     # neither a browser nor httpx's jar will send it back over plain HTTP.
     # Testing over http would quietly exercise a no-cookie path instead.
-    return TestClient(app, base_url="https://testserver")
+    return TestClient(app, base_url="https://testserver/api")
 
 
 def _logged_in(app, username):

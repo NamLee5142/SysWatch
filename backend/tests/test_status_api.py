@@ -39,7 +39,7 @@ def poller(service):
 def client(poller):
     app = create_app()
     app.state.poller = poller
-    return TestClient(app)
+    return TestClient(app, base_url="http://testserver/api")
 
 
 def tick(poller):
@@ -134,7 +134,7 @@ def test_status_reports_whether_the_poller_is_running(client, poller):
 def test_status_survives_an_app_without_a_poller():
     # Nothing has set app.state.poller, which is the case whenever the lifespan
     # has not run.
-    body = TestClient(create_app()).get("/status").json()
+    body = TestClient(create_app(), base_url="http://testserver/api").get("/status").json()
 
     assert body["agent"] == "unknown"
     assert body["pollerRunning"] is False
@@ -146,7 +146,7 @@ def test_status_reports_unknown_when_polling_is_disabled(monkeypatch):
     db_session.dispose_engine()
 
     app = create_app()
-    with TestClient(app) as started:
+    with TestClient(app, base_url="http://testserver/api") as started:
         body = started.get("/status").json()
 
     db_session.dispose_engine()
