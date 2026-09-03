@@ -1,7 +1,8 @@
 import os
+from pathlib import Path
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -11,19 +12,55 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 # environment, then this file, then the defaults — so a one-off override on the
 # command line does not need the file edited.
 CONFIG_FILE_VAR = "SYSWATCH_CONFIG_FILE"
-DEFAULT_CONFIG_FILE = "syswatch.env"
+DATA_DIR_VAR = "SYSWATCH_DATA_DIR"
+CONFIG_FILE_NAME = "syswatch.env"
+DATABASE_FILE_NAME = "syswatch.db"
+LOG_DIR_NAME = "logs"
+
+
+def default_data_dir(dev_mode: bool = False) -> str:
+    r"""Where the database and logs live when nothing says otherwise.
+
+    ProgramData rather than the working directory, because a Windows Service
+    starts in C:\Windows\System32 — a relative default would either fail on
+    permissions or leave a database somewhere nobody thinks to look.
+    Development keeps a directory beside the checkout, since scattering a
+    laptop's test data through ProgramData helps no one.
+    """
+    if dev_mode or os.name != "nt":
+        return "data"
+
+    return str(Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "SysWatch")
 
 
 def config_file_path() -> str:
-    """Where settings are read from, if it exists. Absent is not an error."""
-    return os.environ.get(CONFIG_FILE_VAR, DEFAULT_CONFIG_FILE)
+    """Where settings are read from, if it exists. Absent is not an error.
+
+    Resolved from the environment alone: it is needed to build Settings, so
+    it cannot be one of them.
+    """
+    explicit = os.environ.get(CONFIG_FILE_VAR)
+    if explicit:
+        return explicit
+
+    data_dir = os.environ.get(DATA_DIR_VAR)
+    if data_dir:
+        return str(Path(data_dir) / CONFIG_FILE_NAME)
+
+    # No data dir named either, so fall back to the file beside whatever
+    # started the process. dev_mode lives in the file we are trying to
+    # find, so it cannot be consulted here.
+    return CONFIG_FILE_NAME
 
 
 class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
     agent_base_url: str = "http://127.0.0.1:8080"
-    database_url: str = "sqlite:///./syswatch.db"
+    # All three derive from data_dir when left empty — see _derive_paths.
+    data_dir: str = ""
+    database_url: str = ""
+    log_dir: str = ""
     polling_enabled: bool = True
     poll_interval_seconds: float = 10.0
     # Snapshots older than this are pruned. 0 keeps them forever.
@@ -64,6 +101,29 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @model_validator(mode="after")
+    def _derive_paths(self):
+        """Fill the paths that hang off data_dir, unless they were set outright.
+
+        Derived rather than defaulted so that setting SYSWATCH_DATA_DIR alone
+        moves the database and the logs together, which is what someone
+        relocating an installation means by it.
+        """
+        if not self.data_dir:
+            self.data_dir = default_data_dir(self.dev_mode)
+
+        root = Path(self.data_dir)
+
+        if not self.database_url:
+            # as_posix, because a Windows path in a sqlite:/// URL has to use
+            # forward slashes or SQLAlchemy reads the backslashes as escapes.
+            self.database_url = f"sqlite:///{(root / DATABASE_FILE_NAME).as_posix()}"
+
+        if not self.log_dir:
+            self.log_dir = str(root / LOG_DIR_NAME)
+
+        return self
+
     # NoDecode above turns off the JSON decoding pydantic-settings applies to
     # list fields, which would reject the comma-separated spelling anyone would
     # reach for in a shell. Without it, SYSWATCH_CORS_ORIGINS has to be valid
@@ -93,6 +153,13 @@ class Settings(BaseSettings):
                 '"*" cannot be combined with cookie authentication'
             )
         return value
+
+
+def ensure_data_dir(settings) -> Path:
+    """Create the data directory. Safe to call repeatedly."""
+    root = Path(settings.data_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def get_settings() -> Settings:

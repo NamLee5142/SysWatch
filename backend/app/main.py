@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,7 @@ from app.security import SecurityHeadersMiddleware, verify_security_configuratio
 from app.spa import mount_dashboard
 from app.services.snapshot_poller import SnapshotPoller
 from app.services.snapshot_service import SnapshotService
-from config import get_settings
+from config import ensure_data_dir, get_settings
 
 
 def create_poller(settings):
@@ -36,6 +37,30 @@ def create_poller(settings):
     )
 
 
+def warn_about_a_stray_database(settings, logger):
+    """Say something when the old, working-directory database is still around.
+
+    Before this sprint the default was ./syswatch.db, relative to wherever the
+    process happened to start. Anyone upgrading gets a new, empty database in
+    the data directory and no explanation for where their history went.
+    """
+    legacy = Path("syswatch.db")
+
+    if not legacy.is_file():
+        return
+
+    if legacy.resolve() == Path(settings.data_dir).resolve() / "syswatch.db":
+        return
+
+    logger.warning(
+        "Found %s in the working directory, but the configured database is %s. "
+        "Earlier versions defaulted to the working directory; move the file or "
+        "set SYSWATCH_DATABASE_URL if that is the one you meant.",
+        legacy.resolve(),
+        settings.database_url,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app_logging.configure_logging()
@@ -48,6 +73,10 @@ async def lifespan(app: FastAPI):
     # fail loudly here rather than serve traffic and find out later.
     for warning in verify_security_configuration(settings):
         logger.warning(warning)
+
+    data_dir = ensure_data_dir(settings)
+    logger.info("Data directory: %s", data_dir)
+    warn_about_a_stray_database(settings, logger)
 
     # The engine holds a connection pool and is created once here rather than
     # per request, which is what get_settings() being uncached would otherwise

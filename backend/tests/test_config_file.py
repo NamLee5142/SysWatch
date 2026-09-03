@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from config import CONFIG_FILE_VAR, DEFAULT_CONFIG_FILE, Settings, config_file_path, get_settings
+from config import (
+    CONFIG_FILE_NAME,
+    CONFIG_FILE_VAR,
+    DATA_DIR_VAR,
+    Settings,
+    config_file_path,
+    get_settings,
+)
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = BACKEND_ROOT / "syswatch.env.example"
@@ -71,10 +78,19 @@ def test_a_missing_file_is_not_an_error(tmp_path, monkeypatch):
 
 def test_the_path_comes_from_the_environment(monkeypatch):
     monkeypatch.delenv(CONFIG_FILE_VAR, raising=False)
-    assert config_file_path() == DEFAULT_CONFIG_FILE
+    monkeypatch.delenv(DATA_DIR_VAR, raising=False)
+    assert config_file_path() == CONFIG_FILE_NAME
 
     monkeypatch.setenv(CONFIG_FILE_VAR, r"C:\ProgramData\SysWatch\syswatch.env")
     assert config_file_path() == r"C:\ProgramData\SysWatch\syswatch.env"
+
+
+def test_the_data_directory_supplies_the_path_when_nothing_else_does(monkeypatch, tmp_path):
+    monkeypatch.delenv(CONFIG_FILE_VAR, raising=False)
+    monkeypatch.setenv(DATA_DIR_VAR, str(tmp_path))
+
+    # Naming one directory should be enough to move the whole installation.
+    assert config_file_path() == str(tmp_path / CONFIG_FILE_NAME)
 
 
 def test_the_path_is_read_per_call_not_at_import(config_file, monkeypatch):
