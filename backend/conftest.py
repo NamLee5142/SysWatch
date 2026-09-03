@@ -26,6 +26,16 @@ AUTHENTICATED_FIXTURES = {"anon_client", "viewer_client", "admin_client", "auth_
 
 
 @pytest.fixture(autouse=True)
+def no_local_config_file(monkeypatch, tmp_path):
+    """Keep a developer's own syswatch.env out of the suite.
+
+    Settings read a config file now. One sitting in backend/ would quietly
+    change what the tests are testing, and only on that machine.
+    """
+    monkeypatch.setenv("SYSWATCH_CONFIG_FILE", str(tmp_path / "no-such-config.env"))
+
+
+@pytest.fixture(autouse=True)
 def default_auth_disabled(request, monkeypatch):
     """Run the suite with authentication off unless a test asks otherwise.
 

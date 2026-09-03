@@ -1,7 +1,22 @@
+import os
 from typing import Annotated
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+# A file, because a Windows Service has no shell to export from and an
+# operator needs somewhere to put a secret that survives a reboot. Environment
+# variables still win over it — pydantic-settings resolves init args, then the
+# environment, then this file, then the defaults — so a one-off override on the
+# command line does not need the file edited.
+CONFIG_FILE_VAR = "SYSWATCH_CONFIG_FILE"
+DEFAULT_CONFIG_FILE = "syswatch.env"
+
+
+def config_file_path() -> str:
+    """Where settings are read from, if it exists. Absent is not an error."""
+    return os.environ.get(CONFIG_FILE_VAR, DEFAULT_CONFIG_FILE)
 
 
 class Settings(BaseSettings):
@@ -44,6 +59,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SYSWATCH_",
         case_sensitive=False,
+        env_file_encoding="utf-8",
+        # A stale key left in the file should not stop the process starting.
+        extra="ignore",
     )
 
     # NoDecode above turns off the JSON decoding pydantic-settings applies to
@@ -78,7 +96,15 @@ class Settings(BaseSettings):
 
 
 def get_settings() -> Settings:
-    return Settings()
+    """Settings as the application sees them: file, then environment.
+
+    The file is applied here rather than in model_config so that
+    SYSWATCH_CONFIG_FILE is read now instead of at import — which is what lets a
+    service point at a file in its own data directory. It also keeps a bare
+    Settings() reading only the environment, so a syswatch.env sitting in
+    someone's working directory cannot quietly change what a test is testing.
+    """
+    return Settings(_env_file=config_file_path())
 
 
 settings = get_settings()
