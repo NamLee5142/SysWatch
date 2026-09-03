@@ -1,0 +1,7 @@
+/* Deliberately blank rather than a spinner. The check is one request against a
+   local backend; a spinner that appears and vanishes inside 30ms is more
+   noticeable than nothing at all. */
+.checking {
+  min-height: 100svh;
+  background: var(--bg);
+}
