@@ -165,6 +165,38 @@ def test_seed_downgrade_removes_only_the_seeded_rules(alembic_config):
     assert names == ["Mine"]
 
 
+def test_a_pre_alert_database_gains_the_tables_and_seeds_with_rows_intact(alembic_config):
+    config, database = alembic_config
+
+    # A database from before any alert work: the original snapshots schema,
+    # with a row in it.
+    command.upgrade(config, BASELINE_REVISION)
+    engine = create_engine(f"sqlite:///{database}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO snapshots (host_name, collected_at, cpu_core_count, "
+                "cpu_usage_percent, mem_total_mb, mem_used_mb, disk_total_gb, "
+                "disk_free_gb, os_name, os_version) VALUES "
+                "('devbox', '2026-08-12 11:15:27', 8, 42.5, 16384, 4096, 512, 120, 'Windows', '11')"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    inspector = inspect(engine)
+    assert {"alert_rules", "alerts"}.issubset(inspector.get_table_names())
+
+    with engine.connect() as connection:
+        rule_count = connection.execute(text("SELECT COUNT(*) FROM alert_rules")).scalar_one()
+        snapshot = connection.execute(
+            text("SELECT host_name, cpu_usage_percent FROM snapshots")
+        ).one()
+
+    assert rule_count == 6
+    assert (snapshot.host_name, snapshot.cpu_usage_percent) == ("devbox", 42.5)
+
+
 def test_seed_upgrade_skips_a_name_that_already_exists(alembic_config):
     config, database = alembic_config
 
