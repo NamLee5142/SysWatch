@@ -12,6 +12,7 @@ ENV_VARS = (
     "SYSWATCH_POLL_INTERVAL_SECONDS",
     "SYSWATCH_RETENTION_DAYS",
     "SYSWATCH_CORS_ORIGINS",
+    "SYSWATCH_ALERTS_ENABLED",
 )
 
 
@@ -90,6 +91,14 @@ def test_database_settings_use_documented_defaults(clean_env):
     assert settings.polling_enabled is True
     assert settings.poll_interval_seconds == 10.0
     assert settings.retention_days == 30
+    assert settings.alerts_enabled is True
+
+
+@pytest.mark.parametrize("value, expected", [("false", False), ("0", False), ("true", True)])
+def test_alerts_can_be_toggled_by_env(clean_env, value, expected):
+    clean_env.setenv("SYSWATCH_ALERTS_ENABLED", value)
+
+    assert Settings().alerts_enabled is expected
 
 
 def test_database_settings_read_prefixed_env_vars(clean_env):

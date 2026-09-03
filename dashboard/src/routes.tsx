@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { AppShell } from './layout/AppShell'
+import { AlertsPage } from './pages/AlertsPage'
 import { CpuPage } from './pages/CpuPage'
 import { DiskPage } from './pages/DiskPage'
 import { HistoryPage } from './pages/HistoryPage'
@@ -25,6 +26,7 @@ export function AppRoutes() {
         <Route path="network" element={<NetworkPage />} />
         <Route path="system" element={<SystemPage />} />
         <Route path="history" element={<HistoryPage />} />
+        <Route path="alerts" element={<AlertsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

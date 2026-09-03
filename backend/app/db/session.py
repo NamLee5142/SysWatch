@@ -45,6 +45,11 @@ def _configure_sqlite(engine):
         # mode that combination fails with "database is locked".
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA busy_timeout=5000")
+        # SQLite ignores foreign keys unless asked, per connection. Without this
+        # the alerts.rule_id ON DELETE SET NULL never fires and a deleted rule
+        # leaves dangling alert rows. Migrations run through their own engine and
+        # are unaffected.
+        cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
 

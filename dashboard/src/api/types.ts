@@ -112,3 +112,52 @@ export interface Host {
 export interface HostList {
   items: Host[]
 }
+
+// See backend/app/models/alert.py. The order info < warning < critical is only
+// for sorting; nothing branches on it.
+export type Severity = 'info' | 'warning' | 'critical'
+export type AlertState = 'ok' | 'firing'
+export type Operator = 'gt' | 'gte' | 'lt' | 'lte'
+
+export interface AlertRule {
+  id: number
+  name: string
+  metric: Metric
+  operator: Operator
+  threshold: number
+  severity: Severity
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AlertRuleList {
+  items: AlertRule[]
+}
+
+export interface Alert {
+  id: number
+  // null once the rule is deleted; the copied fields below still describe what
+  // fired.
+  ruleId: number | null
+  ruleName: string
+  metric: Metric
+  operator: Operator
+  threshold: number
+  severity: Severity
+  hostName: string
+  state: AlertState
+  value: number
+  triggeredAt: string
+  resolvedAt: string | null
+  lastSeenAt: string
+}
+
+export interface AlertPage {
+  items: Alert[]
+  count: number
+}
+
+export interface AlertList {
+  items: Alert[]
+}

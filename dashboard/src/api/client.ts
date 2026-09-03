@@ -1,4 +1,20 @@
-import type { Bucket, HostList, Metric, Series, Snapshot, SnapshotPage, Status } from './types'
+import type {
+  Alert,
+  AlertList,
+  AlertPage,
+  AlertRule,
+  AlertRuleList,
+  AlertState,
+  Bucket,
+  HostList,
+  Metric,
+  Operator,
+  Series,
+  Severity,
+  Snapshot,
+  SnapshotPage,
+  Status,
+} from './types'
 
 // In development the Vite proxy (vite.config.ts) serves '/api' from the same
 // origin as the page, so no origin needs naming here. A production build has
@@ -83,19 +99,31 @@ function buildUrl(path: string, params?: Record<string, string | number | undefi
   return queryString ? `${BASE_URL}${path}?${queryString}` : `${BASE_URL}${path}`
 }
 
-async function request<T>(
-  path: string,
-  params?: Record<string, string | number | undefined>,
-  signal?: AbortSignal,
-): Promise<T> {
+interface RequestOptions {
+  params?: Record<string, string | number | undefined>
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  // Serialised to a JSON request body. Only meaningful for POST and PUT.
+  body?: unknown
+  signal?: AbortSignal
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { params, method = 'GET', body, signal } = options
+
+  const init: RequestInit = { method, signal }
+  if (body !== undefined) {
+    init.body = JSON.stringify(body)
+    init.headers = { 'Content-Type': 'application/json' }
+  }
+
   let response: Response
 
   try {
-    response = await fetch(buildUrl(path, params), { signal })
+    response = await fetch(buildUrl(path, params), init)
   } catch (cause) {
-    // An abort is the caller's own doing (see the polling hook in a later
-    // commit), not a connectivity failure, so it is left to propagate as-is
-    // rather than being reported as one.
+    // An abort is the caller's own doing (see the polling hook), not a
+    // connectivity failure, so it is left to propagate as-is rather than being
+    // reported as one.
     if (cause instanceof DOMException && cause.name === 'AbortError') {
       throw cause
     }
@@ -104,6 +132,11 @@ async function request<T>(
 
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorBody(response))
+  }
+
+  // DELETE answers 204 with no body; parsing it as JSON would throw.
+  if (response.status === 204) {
+    return undefined as T
   }
 
   return (await response.json()) as T
@@ -122,7 +155,7 @@ export interface ListSnapshotsParams {
 }
 
 export function listSnapshots(params: ListSnapshotsParams = {}, signal?: AbortSignal): Promise<SnapshotPage> {
-  return request<SnapshotPage>('/snapshots', params, signal)
+  return request<SnapshotPage>('/snapshots', { params, signal })
 }
 
 export interface SnapshotSeriesParams {
@@ -135,24 +168,76 @@ export interface SnapshotSeriesParams {
 }
 
 export function getSnapshotSeries(params: SnapshotSeriesParams, signal?: AbortSignal): Promise<Series> {
-  return request<Series>('/snapshots/series', params, signal)
+  return request<Series>('/snapshots/series', { params, signal })
 }
 
 export function getLatestSnapshot(host?: string, signal?: AbortSignal): Promise<Snapshot> {
-  return request<Snapshot>('/snapshots/latest', { host }, signal)
+  return request<Snapshot>('/snapshots/latest', { params: { host }, signal })
 }
 
 // Reads the agent directly rather than storage, so it 503s while the agent is
 // down. The dashboard reads getLatestSnapshot() instead for exactly that
 // reason; this is exposed for completeness and any future non-dashboard use.
 export function getSnapshot(signal?: AbortSignal): Promise<Snapshot> {
-  return request<Snapshot>('/snapshot', undefined, signal)
+  return request<Snapshot>('/snapshot', { signal })
 }
 
 export function getStatus(signal?: AbortSignal): Promise<Status> {
-  return request<Status>('/status', undefined, signal)
+  return request<Status>('/status', { signal })
 }
 
 export function getHosts(signal?: AbortSignal): Promise<HostList> {
-  return request<HostList>('/hosts', undefined, signal)
+  return request<HostList>('/hosts', { signal })
+}
+
+export interface ListAlertsParams {
+  host?: string
+  state?: AlertState
+  rule_id?: number
+  since?: string
+  until?: string
+  limit?: number
+  offset?: number
+  [key: string]: string | number | undefined
+}
+
+export function getAlerts(params: ListAlertsParams = {}, signal?: AbortSignal): Promise<AlertPage> {
+  return request<AlertPage>('/alerts', { params, signal })
+}
+
+export function getActiveAlerts(host?: string, signal?: AbortSignal): Promise<AlertList> {
+  return request<AlertList>('/alerts/active', { params: { host }, signal })
+}
+
+export function getAlert(id: number, signal?: AbortSignal): Promise<Alert> {
+  return request<Alert>(`/alerts/${id}`, { signal })
+}
+
+export function listAlertRules(signal?: AbortSignal): Promise<AlertRuleList> {
+  return request<AlertRuleList>('/alert-rules', { signal })
+}
+
+export interface AlertRuleInput {
+  name: string
+  metric: Metric
+  operator: Operator
+  threshold: number
+  severity?: Severity
+  enabled?: boolean
+}
+
+export function createAlertRule(rule: AlertRuleInput, signal?: AbortSignal): Promise<AlertRule> {
+  return request<AlertRule>('/alert-rules', { method: 'POST', body: rule, signal })
+}
+
+export function updateAlertRule(
+  id: number,
+  changes: Partial<AlertRuleInput>,
+  signal?: AbortSignal,
+): Promise<AlertRule> {
+  return request<AlertRule>(`/alert-rules/${id}`, { method: 'PUT', body: changes, signal })
+}
+
+export function deleteAlertRule(id: number, signal?: AbortSignal): Promise<void> {
+  return request<void>(`/alert-rules/${id}`, { method: 'DELETE', signal })
 }

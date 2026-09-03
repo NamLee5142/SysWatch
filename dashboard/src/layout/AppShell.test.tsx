@@ -2,13 +2,14 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getLatestSnapshot, getStatus } from '../api/client'
+import { getActiveAlerts, getLatestSnapshot, getStatus } from '../api/client'
 import type { Snapshot, Status } from '../api/types'
 import { AppShell } from './AppShell'
 
 vi.mock('../api/client', () => ({
   getLatestSnapshot: vi.fn(),
   getStatus: vi.fn(),
+  getActiveAlerts: vi.fn(),
 }))
 
 const SNAPSHOT: Snapshot = {
@@ -47,6 +48,10 @@ function renderShell() {
 beforeEach(() => {
   vi.mocked(getLatestSnapshot).mockReset()
   vi.mocked(getStatus).mockReset()
+  vi.mocked(getActiveAlerts).mockReset()
+  // The header's alert indicator polls this; individual tests that care about
+  // it override the resolved value.
+  vi.mocked(getActiveAlerts).mockResolvedValue({ items: [] })
 })
 
 describe('AppShell header', () => {
@@ -126,5 +131,17 @@ describe('AppShell header', () => {
     renderShell()
 
     expect(screen.getByText('page content')).toBeInTheDocument()
+  })
+
+  it('shows the alert indicator, linking to the Alerts page', async () => {
+    vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
+    vi.mocked(getStatus).mockReturnValue(neverSettles())
+    // The indicator only reads items.length.
+    vi.mocked(getActiveAlerts).mockResolvedValue({ items: [{}, {}] } as never)
+
+    renderShell()
+
+    const link = await screen.findByRole('link', { name: '2 active alerts' })
+    expect(link).toHaveAttribute('href', '/alerts')
   })
 })

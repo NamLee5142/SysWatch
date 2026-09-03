@@ -3,12 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ApiError,
   NetworkError,
+  createAlertRule,
+  deleteAlertRule,
+  getActiveAlerts,
+  getAlerts,
   getHosts,
   getLatestSnapshot,
   getSnapshot,
   getSnapshotSeries,
   getStatus,
+  listAlertRules,
   listSnapshots,
+  updateAlertRule,
 } from './client'
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -140,5 +146,73 @@ describe('API client', () => {
 
     const [, init] = vi.mocked(fetch).mock.calls[0]
     expect(init).toMatchObject({ signal: controller.signal })
+  })
+
+  it('encodes alert filters, including a non-default state', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [], count: 0 }))
+
+    await getAlerts({ state: 'firing', rule_id: 3, limit: 20 })
+
+    const [url] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('/api/alerts?state=firing&rule_id=3&limit=20')
+  })
+
+  it('reads active alerts from /alerts/active', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [] }))
+
+    await getActiveAlerts()
+
+    expect(fetch).toHaveBeenCalledWith('/api/alerts/active', expect.anything())
+  })
+
+  it('POSTs a new rule as a JSON body', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ id: 1 }, 201))
+
+    await createAlertRule({ name: 'CPU', metric: 'cpu', operator: 'gt', threshold: 90 })
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('/api/alert-rules')
+    expect(init).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ name: 'CPU', metric: 'cpu', operator: 'gt', threshold: 90 }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
+
+  it('PUTs only the changed fields', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ id: 7, enabled: false }))
+
+    await updateAlertRule(7, { enabled: false })
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('/api/alert-rules/7')
+    expect(init).toMatchObject({ method: 'PUT', body: JSON.stringify({ enabled: false }) })
+  })
+
+  it('resolves a 204 DELETE without trying to parse a body', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
+
+    await expect(deleteAlertRule(7)).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith('/api/alert-rules/7', expect.objectContaining({ method: 'DELETE' }))
+  })
+
+  it('surfaces a 422 from rule creation as an ApiError with the message', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonResponse({ detail: [{ loc: ['body', 'threshold'], msg: 'Input should be a finite number' }] }, 422),
+    )
+
+    await expect(
+      createAlertRule({ name: 'x', metric: 'cpu', operator: 'gt', threshold: Infinity }),
+    ).rejects.toMatchObject({ name: 'ApiError', status: 422, message: 'Input should be a finite number' })
+  })
+
+  it('does not attach a JSON body or header to a GET', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ items: [] }))
+
+    await listAlertRules()
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    expect((init as RequestInit).body).toBeUndefined()
+    expect((init as RequestInit).headers).toBeUndefined()
   })
 })

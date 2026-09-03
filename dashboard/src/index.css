@@ -19,6 +19,10 @@
   --status-down: #dc2626;
   --status-unknown: #9ca3af;
 
+  /* Alert severities. Critical reuses the connection-down red; warning needs an
+     amber of its own; info is muted. */
+  --severity-warning: #d97706;
+
   font: 16px/145% var(--sans);
   color-scheme: light dark;
   color: var(--text);
@@ -39,6 +43,8 @@
     --status-up: #4ade80;
     --status-down: #f87171;
     --status-unknown: #6b7280;
+
+    --severity-warning: #f59e0b;
   }
 }
 

@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
 import { getLatestSnapshot, getStatus } from '../api/client'
+import { AlertIndicator } from '../components/AlertIndicator'
 import { StalenessBanner } from '../components/StalenessBanner'
 import { StatusDot } from '../components/StatusDot'
 import { usePolling } from '../hooks/usePolling'
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/network', label: 'Network' },
   { to: '/system', label: 'System' },
   { to: '/history', label: 'History' },
+  { to: '/alerts', label: 'Alerts' },
 ]
 
 function navLinkClassName({ isActive }: { isActive: boolean }): string {
@@ -66,10 +68,13 @@ export function AppShell() {
       <div className={styles.main}>
         <header className={styles.header}>
           <span className={styles.hostName}>{hostName ?? '—'}</span>
-          <span className={styles.connection}>
-            <StatusDot state={agentState} />
-            {AGENT_STATE_LABEL[agentState]}
-          </span>
+          <div className={styles.headerRight}>
+            <AlertIndicator />
+            <span className={styles.connection}>
+              <StatusDot state={agentState} />
+              {AGENT_STATE_LABEL[agentState]}
+            </span>
+          </div>
         </header>
         <StalenessBanner agentState={agentState} />
         <main className={styles.content}>

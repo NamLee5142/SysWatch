@@ -17,7 +17,12 @@ def isolated_database(monkeypatch):
 
 @pytest.fixture
 def quiet_poller(monkeypatch):
-    """Replace the agent-facing service so the poller never opens a socket."""
+    """Replace the agent-facing service so the poller never opens a socket.
+
+    Alerts are switched off here: these tests exercise the poller lifecycle,
+    not the engine, and the lifespan database has no schema for it to write to.
+    """
+    monkeypatch.setenv("SYSWATCH_ALERTS_ENABLED", "false")
 
     class FakeService:
         def __init__(self):
@@ -30,6 +35,17 @@ def quiet_poller(monkeypatch):
     service = FakeService()
     monkeypatch.setattr("app.main.SnapshotService", lambda *args, **kwargs: service)
     return service
+
+
+def test_create_poller_wires_an_engine_when_alerts_are_enabled(monkeypatch):
+    from app.alerts import AlertEngine
+    from app.main import create_poller
+    from config import Settings
+
+    monkeypatch.setattr("app.main.AgentClient", lambda *a, **k: object())
+
+    assert isinstance(create_poller(Settings(alerts_enabled=True))._engine, AlertEngine)
+    assert create_poller(Settings(alerts_enabled=False))._engine is None
 
 
 def test_engine_is_created_on_startup(monkeypatch, quiet_poller):

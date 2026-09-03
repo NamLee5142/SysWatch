@@ -1,7 +1,18 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import DateTime, Float, Index, Integer, JSON, MetaData, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    MetaData,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Explicit names for every constraint and index. SQLite cannot ALTER a
@@ -69,4 +80,88 @@ class SnapshotRecord(Base):
         return (
             f"SnapshotRecord(id={self.id!r}, host_name={self.host_name!r}, "
             f"collected_at={self.collected_at!r})"
+        )
+
+
+class AlertRuleRecord(Base):
+    """A configurable threshold. Alert policy lives here, never in the agent."""
+
+    __tablename__ = "alert_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # One of app.models.snapshot.Metric; the operator is one of
+    # app.models.alert.Operator. Stored as plain text so a new metric or
+    # operator does not need a schema change.
+    metric: Mapped[str] = mapped_column(String(32), nullable=False)
+    operator: Mapped[str] = mapped_column(String(16), nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Naive UTC, stamped by AlertRuleStore on write — the same convention
+    # collected_at follows. No server default, so the column never disagrees
+    # with the repository's timezone handling.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    def __repr__(self):
+        return (
+            f"AlertRuleRecord(id={self.id!r}, name={self.name!r}, "
+            f"metric={self.metric!r}, operator={self.operator!r}, "
+            f"threshold={self.threshold!r}, enabled={self.enabled!r})"
+        )
+
+
+class AlertRecord(Base):
+    """One alert occurrence — currently firing, or resolved history.
+
+    The rule's identity is copied in when the alert opens (`rule_name` through
+    `severity`), so a past alert still describes the condition that fired after
+    the rule is edited or deleted. `rule_id` goes NULL on delete; the copies do
+    not.
+    """
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    rule_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("alert_rules.id", ondelete="SET NULL"), nullable=True
+    )
+    rule_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    metric: Mapped[str] = mapped_column(String(32), nullable=False)
+    operator: Mapped[str] = mapped_column(String(16), nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    host_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 'firing' or 'ok' — app.models.alert.AlertState.
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Most recent evaluated metric value, in the metric's own unit.
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # All naive UTC, stamped from the snapshot's collectedAt by the engine.
+    triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        # The "open alert for this host" lookup the engine runs every tick, and
+        # the filter behind GET /alerts/active.
+        Index("ix_alerts_host_name_state", "host_name", "state"),
+        # Resolving a rule's alerts when it is disabled or deleted.
+        Index("ix_alerts_rule_id", "rule_id"),
+        # GET /alerts history, newest first.
+        Index("ix_alerts_triggered_at", "triggered_at"),
+    )
+
+    def __repr__(self):
+        return (
+            f"AlertRecord(id={self.id!r}, rule_id={self.rule_id!r}, "
+            f"host_name={self.host_name!r}, state={self.state!r}, "
+            f"value={self.value!r})"
         )

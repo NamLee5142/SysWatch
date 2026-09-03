@@ -129,6 +129,7 @@ without double-fetching alongside `useApi`'s own mount-time fetch.
 | `/network` | One card per interface with its send/receive rates, plus received and sent throughput charts (`metric=net_recv` / `net_sent`) |
 | `/system` | Host identity, agent/poller connection detail, and the host list from `GET /hosts` |
 | `/history` | Filterable, paged table over `GET /snapshots` |
+| `/alerts` | Active alerts, recently resolved alerts, and a read-only list of the configured rules |
 
 The process and network pages fall back to a "this agent does not report …
 data" message when the latest snapshot has no such block (an agent built
@@ -136,8 +137,17 @@ before Sprint 7). `MetricChart` reads the series' `unit` to pick its axis —
 a fixed 0-100 scale for percentages, an auto scale with `formatBytesPerSec`
 ticks for throughput, whole numbers for a count.
 
-`AppShell` wraps every route with the sidebar and header, including a
-staleness banner (`StalenessBanner`) shown above the page content whenever
+The Alerts page polls `GET /alerts/active`, `GET /alerts?state=ok` and
+`GET /alert-rules` independently. Value and threshold are shown in each
+metric's own unit (`src/lib/alerts.ts` mirrors the backend's metric → unit
+map, since the alert payload carries the metric but not the unit). Rule
+editing is API-only for now — the page only lists rules.
+
+`AppShell` wraps every route with the sidebar and header. The header carries a
+🔔 indicator that polls `GET /alerts/active` and links to `/alerts`; it is
+shown even at zero (dimmed) so "nothing is firing" is visible rather than
+absent, and turns red with the count when something is. The header also shows
+a staleness banner (`StalenessBanner`) above the page content whenever
 `GET /status` reports the agent down — the numbers on screen stay real (they
 are storage-backed), just possibly out of date, and the banner says so rather
 than leaving that to the small header dot alone.
@@ -148,10 +158,10 @@ than leaving that to the small header dot alone.
 dashboard/
     src/
         api/            # Typed HTTP client and mirrored backend models
-        components/     # Shared UI: gauges, cards, charts, skeletons
+        components/     # Shared UI: gauges, cards, charts, skeletons, the alert indicator
         hooks/          # useApi, usePolling, useUpdateEffect
         layout/         # AppShell — sidebar, header, routed outlet
-        lib/            # Formatting, error messages, time ranges, constants
+        lib/            # Formatting, error messages, time ranges, constants, alert helpers
         pages/          # One file per route
         App.tsx         # BrowserRouter, for real navigation
         routes.tsx      # AppRoutes — kept apart from App so tests can drive

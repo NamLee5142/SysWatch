@@ -23,6 +23,7 @@ describe('AppRoutes', () => {
     ['/network', 'Network'],
     ['/system', 'System'],
     ['/history', 'History'],
+    ['/alerts', 'Alerts'],
   ])('renders the %s page at %s', (path, heading) => {
     renderAt(path)
 
@@ -39,7 +40,7 @@ describe('AppRoutes', () => {
     renderAt('/')
 
     const nav = screen.getByRole('navigation', { name: 'Sections' })
-    const labels = ['Overview', 'CPU', 'Memory', 'Disk', 'Processes', 'Network', 'System', 'History']
+    const labels = ['Overview', 'CPU', 'Memory', 'Disk', 'Processes', 'Network', 'System', 'History', 'Alerts']
 
     for (const label of labels) {
       expect(within(nav).getByRole('link', { name: label })).toBeInTheDocument()

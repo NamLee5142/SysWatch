@@ -57,20 +57,21 @@ SysWatch/
     backend/                   # Python backend (FastAPI)
         alembic/               # Database migrations
         app/
+            alerts/            # Rule evaluator and alert engine
             api/               # FastAPI routes
             client/            # HTTP client for the C++ agent
             db/                # Engine, session scope, ORM models
-            models/            # Pydantic snapshot models
+            models/            # Pydantic snapshot and alert models
             repositories/      # Persistence boundary
             services/          # Snapshot service and background poller
         tests/
     dashboard/                 # React + TypeScript web dashboard
         src/
             api/               # Typed HTTP client and mirrored backend models
-            components/        # Shared UI: gauges, cards, charts, skeletons
+            components/        # Shared UI: gauges, cards, charts, skeletons, alert indicator
             hooks/             # useApi, usePolling, useUpdateEffect
             layout/            # AppShell — sidebar, header, routed outlet
-            lib/               # Formatting, error messages, time ranges
+            lib/               # Formatting, error messages, time ranges, alert helpers
             pages/             # One file per route
     docs/                      # Sprint plans and design notes
     LICENSE
@@ -120,7 +121,7 @@ SysWatch/
 
 ## Phase 4 - Advanced Features
 
-- [ ] Alert engine
+- [x] Alert engine
 - [ ] Email notifications
 - [ ] Plugin system
 - [ ] Remote configuration
