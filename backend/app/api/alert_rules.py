@@ -1,12 +1,15 @@
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 
+from app.auth.dependencies import require_admin
 from app.models.alert import AlertRule, AlertRuleCreate, AlertRuleList, AlertRuleUpdate
 from app.repositories import AlertRuleStore
 
-# The first write path on the API. It is unauthenticated, like the reads —
-# acceptable while the backend only listens on localhost, but it must not reach
-# a network before Phase 4 adds auth. See the CORS note in app/main.py.
 router = APIRouter()
+
+# Reading rules is part of understanding the alerts you can see, so every
+# authenticated caller may do it. Changing them is changing what the system
+# will page you about, which is an administrator's decision.
+ADMIN_ONLY = [Depends(require_admin)]
 
 
 def create_rule_store() -> AlertRuleStore:
@@ -29,8 +32,9 @@ def list_alert_rules():
     "/alert-rules",
     response_model=AlertRule,
     status_code=201,
+    dependencies=ADMIN_ONLY,
     summary="Create an alert rule",
-    responses={422: {"description": "Invalid rule"}},
+    responses={403: {"description": "Not an administrator"}, 422: {"description": "Invalid rule"}},
 )
 def create_alert_rule(payload: AlertRuleCreate):
     record = create_rule_store().create(payload)
@@ -40,6 +44,7 @@ def create_alert_rule(payload: AlertRuleCreate):
 @router.put(
     "/alert-rules/{rule_id}",
     response_model=AlertRule,
+    dependencies=ADMIN_ONLY,
     summary="Update an alert rule",
     responses={404: {"description": "No such rule"}, 422: {"description": "Invalid change"}},
 )
@@ -57,6 +62,7 @@ def update_alert_rule(rule_id: int, payload: AlertRuleUpdate):
 @router.delete(
     "/alert-rules/{rule_id}",
     status_code=204,
+    dependencies=ADMIN_ONLY,
     summary="Delete an alert rule",
     responses={404: {"description": "No such rule"}},
 )

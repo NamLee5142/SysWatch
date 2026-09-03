@@ -1,12 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
 from app.alerts import AlertEngine
 from app.api import alert_rules, alerts, auth, health, hosts, snapshot, snapshots, status
+from app.auth.dependencies import require_authenticated_user
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
 from app.repositories import AlertRuleStore, AlertStore, SnapshotStore
@@ -85,12 +86,23 @@ def create_app() -> FastAPI:
     # Before the protected routers, and itself unprotected: this is where a
     # caller with no session goes to get one.
     app.include_router(auth.router)
-    app.include_router(status.router)
-    app.include_router(hosts.router)
-    app.include_router(snapshot.router)
-    app.include_router(snapshots.router)
-    app.include_router(alerts.router)
-    app.include_router(alert_rules.router)
+    # Everything past this point needs a session. /health stays public so a
+    # load balancer can ask whether the process is alive; /status does not,
+    # because it reports poll timing, the last error and whether the agent is
+    # reachable — operational detail that is nobody's business anonymously.
+    #
+    # Applied per router rather than as middleware so the dependency tree is
+    # the policy: a new router is unprotected only if someone leaves it out of
+    # this list on purpose.
+    protected = [Depends(require_authenticated_user)]
+
+    app.include_router(status.router, dependencies=protected)
+    app.include_router(hosts.router, dependencies=protected)
+    app.include_router(snapshot.router, dependencies=protected)
+    app.include_router(snapshots.router, dependencies=protected)
+    app.include_router(alerts.router, dependencies=protected)
+    # The alert-rule writes carry require_admin on the routes themselves.
+    app.include_router(alert_rules.router, dependencies=protected)
 
     @app.get("/")
     def root():
