@@ -1,13 +1,17 @@
 import time
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.api import auth as auth_api
 from app.api.auth import SESSION_COOKIE, login_limiter
 from app.auth.password import hash_password
 from app.auth.rate_limit import DEFAULT_LIMIT, LoginRateLimiter
+from app.db import get_session as db_scope
 from app.db import session as db_session
-from app.db.models import Base
+from app.db.models import Base, SessionRecord, UserRecord
 from app.main import create_app
 from app.repositories import UserStore
 
@@ -309,3 +313,78 @@ def test_resetting_a_key_forgets_its_failures():
     limiter.reset("k")
 
     assert limiter.retry_after("k") is None
+
+
+# --- session lifetime through the API --------------------------------------
+
+
+def expire_session_of(username):
+    """Backdate a live session's expiry, the way waiting out the TTL would."""
+    with db_scope() as session:
+        user = session.execute(
+            select(UserRecord).where(UserRecord.username == username)
+        ).scalars().one()
+        record = session.execute(
+            select(SessionRecord).where(SessionRecord.user_id == user.id)
+        ).scalars().one()
+        record.expires_at = datetime(2020, 1, 1)
+
+
+def test_an_expired_session_is_rejected_by_the_api(client):
+    make_user()
+    login(client)
+    assert client.get("/auth/me").status_code == 200
+
+    expire_session_of("admin")
+
+    # The cookie is still in the jar and still well-formed; only the server's
+    # record of it has aged out.
+    assert client.get("/auth/me").status_code == 401
+
+
+def test_disabling_a_user_ends_their_live_session(client):
+    make_user()
+    login(client)
+    assert client.get("/auth/me").status_code == 200
+
+    with db_scope() as session:
+        session.execute(
+            select(UserRecord).where(UserRecord.username == "admin")
+        ).scalars().one().enabled = False
+
+    # Not "on their next login" — the session they are already holding stops
+    # working, which is the point of checking enabled on every request.
+    assert client.get("/auth/me").status_code == 401
+
+
+def test_deleting_a_user_ends_their_live_session(client):
+    make_user()
+    login(client)
+
+    with db_scope() as session:
+        session.delete(
+            session.execute(
+                select(UserRecord).where(UserRecord.username == "admin")
+            ).scalars().one()
+        )
+
+    assert client.get("/auth/me").status_code == 401
+
+
+def test_the_rate_limit_recovers_after_its_window(monkeypatch, client):
+    # Comfortably longer than the two Argon2 verifies it takes to reach the
+    # limit — a window under ~100ms expires between the attempts meant to fill
+    # it, and nothing is ever limited.
+    monkeypatch.setattr(
+        auth_api, "login_limiter", LoginRateLimiter(limit=2, window_seconds=0.5)
+    )
+    make_user()
+
+    for _ in range(2):
+        assert login(client, password="wrong password").status_code == 401
+    assert login(client, password="wrong password").status_code == 429
+
+    time.sleep(0.55)
+
+    # A lockout that never lifts is an outage, not a defence.
+    assert login(client).status_code == 200
