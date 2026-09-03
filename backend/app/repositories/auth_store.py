@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 
 from app.db import get_session
 from app.db.models import SessionRecord, UserRecord
@@ -46,6 +46,22 @@ class UserStore:
             session.add(record)
 
         return self._hydrate(record)
+
+    def set_password(self, user_id, password_hash):
+        """Replace a stored hash. Returns whether the account was there."""
+        statement = (
+            update(UserRecord)
+            .where(UserRecord.id == user_id)
+            .values(password_hash=password_hash, updated_at=_now())
+        )
+
+        with get_session() as session:
+            return session.execute(statement).rowcount > 0
+
+    def count(self):
+        """How many accounts exist — how the CLI knows it is bootstrapping."""
+        with get_session() as session:
+            return session.execute(select(func.count()).select_from(UserRecord)).scalar_one()
 
     def _hydrate(self, record):
         if record is None:
