@@ -29,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/network', label: 'Network' },
   { to: '/system', label: 'System' },
   { to: '/history', label: 'History' },
+  { to: '/alerts', label: 'Alerts' },
 ]
 
 function navLinkClassName({ isActive }: { isActive: boolean }): string {
