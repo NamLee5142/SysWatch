@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # How long a session lives from login. Absolute, not sliding: activity
     # updates last_seen_at but does not extend this.
     session_ttl_seconds: int = 28800  # 8 hours
+    # Relaxes what production must not relax — currently the session cookie's
+    # Secure flag, so the dashboard works over plain HTTP in development.
+    # Defaults false so the insecure state is the one you opt into.
+    dev_mode: bool = False
     # Browser origins allowed to call this API. Both spellings of the Vite dev
     # server are listed because a browser treats them as different origins.
     cors_origins: Annotated[list[str], NoDecode] = [

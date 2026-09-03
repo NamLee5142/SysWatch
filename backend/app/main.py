@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
 from app.alerts import AlertEngine
-from app.api import alert_rules, alerts, health, hosts, snapshot, snapshots, status
+from app.api import alert_rules, alerts, auth, health, hosts, snapshot, snapshots, status
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
 from app.repositories import AlertRuleStore, AlertStore, SnapshotStore
@@ -82,6 +82,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    # Before the protected routers, and itself unprotected: this is where a
+    # caller with no session goes to get one.
+    app.include_router(auth.router)
     app.include_router(status.router)
     app.include_router(hosts.router)
     app.include_router(snapshot.router)
