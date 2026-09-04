@@ -21,8 +21,12 @@ def quiet_poller(monkeypatch):
 
     Alerts are switched off here: these tests exercise the poller lifecycle,
     not the engine, and the lifespan database has no schema for it to write to.
+
+    dev_mode, because these enter the lifespan with authentication disabled and
+    that is now fatal anywhere else.
     """
     monkeypatch.setenv("SYSWATCH_ALERTS_ENABLED", "false")
+    monkeypatch.setenv("SYSWATCH_DEV_MODE", "true")
 
     class FakeService:
         def __init__(self):

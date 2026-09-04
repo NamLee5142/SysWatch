@@ -142,13 +142,49 @@ def test_dev_mode_allows_a_missing_secret_but_says_so():
     assert any("SYSWATCH_SESSION_SECRET is unset" in w for w in warnings)
 
 
-def test_disabling_auth_warns_loudly():
-    warnings = verify_security_configuration(settings(auth_enabled=False, session_secret=""))
+def test_disabling_auth_is_fatal_outside_development():
+    with pytest.raises(InsecureConfiguration, match="opens every endpoint"):
+        verify_security_configuration(settings(auth_enabled=False, session_secret=""))
 
-    # Silence here would let a misconfigured deployment look normal in the log
-    # while serving every endpoint to anyone.
-    assert len(warnings) == 1
-    assert "every caller is treated as an administrator" in warnings[0]
+
+def test_the_refusal_says_how_to_allow_it():
+    with pytest.raises(InsecureConfiguration, match="SYSWATCH_DEV_MODE=true"):
+        verify_security_configuration(settings(auth_enabled=False, session_secret=""))
+
+
+def test_disabling_auth_in_development_warns_instead():
+    warnings = verify_security_configuration(
+        settings(auth_enabled=False, dev_mode=True, session_secret="")
+    )
+
+    # A warning is right here and was not enough in production: a startup log
+    # is a hundred lines of normal, and this one says the API is open to
+    # anyone who can reach the port.
+    assert any("every caller is treated as an administrator" in w for w in warnings)
+
+
+def test_a_plain_http_cors_origin_is_refused():
+    with pytest.raises(InsecureConfiguration, match="never send it"):
+        verify_security_configuration(settings(cors_origins=["http://dash.example.com"]))
+
+
+def test_an_https_cors_origin_is_fine():
+    assert verify_security_configuration(settings(cors_origins=["https://dash.example.com"])) == []
+
+
+def test_development_may_use_a_plain_http_origin():
+    warnings = verify_security_configuration(
+        settings(dev_mode=True, cors_origins=["http://localhost:5173"])
+    )
+
+    assert not any("never send it" in w for w in warnings)
+
+
+def test_one_bad_origin_among_good_ones_is_still_refused():
+    with pytest.raises(InsecureConfiguration):
+        verify_security_configuration(
+            settings(cors_origins=["https://good.example.com", "http://bad.example.com"])
+        )
 
 
 def test_the_startup_check_runs_in_the_lifespan(monkeypatch):

@@ -98,11 +98,34 @@ def verify_security_configuration(settings):
     warnings = []
 
     if not settings.auth_enabled:
+        if not settings.dev_mode:
+            # A warning was not enough. Anyone reading a startup log sees a
+            # hundred lines of normal, and this one says the whole API is open
+            # to anyone who can reach the port. Refusing to start is the only
+            # version of this message that cannot be scrolled past.
+            raise InsecureConfiguration(
+                "SYSWATCH_AUTH_ENABLED is false, which opens every endpoint and "
+                "treats every caller as an administrator. Set SYSWATCH_DEV_MODE=true "
+                "if this is a development machine; otherwise remove the setting."
+            )
+
         warnings.append(
             "SYSWATCH_AUTH_ENABLED is false: every endpoint is open and every "
             "caller is treated as an administrator."
         )
         return warnings
+
+    for origin in settings.cors_origins:
+        if not settings.dev_mode and not origin.startswith("https://"):
+            # Not pedantry: the session cookie carries Secure, so a browser on
+            # an http:// origin never sends it back. A dashboard configured
+            # this way logs in and stays logged out, and the symptom points
+            # nowhere near the cause.
+            raise InsecureConfiguration(
+                f"SYSWATCH_CORS_ORIGINS contains {origin!r}. The session cookie is "
+                "Secure, so a browser on an http:// origin will never send it — "
+                "use https://, or set SYSWATCH_DEV_MODE=true for local work."
+            )
 
     if settings.dev_mode:
         warnings.append(

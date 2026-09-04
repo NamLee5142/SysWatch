@@ -143,6 +143,8 @@ def test_status_survives_an_app_without_a_poller():
 def test_status_reports_unknown_when_polling_is_disabled(monkeypatch):
     monkeypatch.setenv("SYSWATCH_POLLING_ENABLED", "false")
     monkeypatch.setenv("SYSWATCH_DATABASE_URL", "sqlite://")
+    # Enters the lifespan with authentication off, which only dev mode allows.
+    monkeypatch.setenv("SYSWATCH_DEV_MODE", "true")
     db_session.dispose_engine()
 
     app = create_app()
