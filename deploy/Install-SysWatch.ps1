@@ -99,8 +99,23 @@ function Get-PythonCommand {
         $command = Get-Command $candidate -ErrorAction SilentlyContinue
         if (-not $command) { continue }
 
-        $reported = & $candidate --version 2>&1
-        if ($LASTEXITCODE -ne 0) { continue }
+        # The Store stub writes to stderr, which is a terminating error here
+        # while $ErrorActionPreference is Stop - so a machine with the alias
+        # installed would stop the script rather than move on to the next
+        # candidate, which is the whole point of the loop.
+        $reported = $null
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $reported = & $candidate --version 2>&1
+            $code = $LASTEXITCODE
+        } catch {
+            continue
+        } finally {
+            $ErrorActionPreference = $previous
+        }
+
+        if ($code -ne 0) { continue }
         if ($reported -notmatch 'Python (\d+\.\d+\.\d+)') { continue }
 
         $found = [version]$matches[1]
@@ -200,7 +215,8 @@ function Invoke-Native {
         [string[]]$Arguments,
         [string]$WorkingDirectory,
         [string]$What,
-        [switch]$ShowOutput
+        [switch]$ShowOutput,
+        [switch]$Capture
     )
 
     $previous = $ErrorActionPreference
@@ -224,6 +240,10 @@ function Invoke-Native {
 
     if ($ShowOutput.IsPresent) {
         foreach ($line in $output) { Write-Detail $line }
+    }
+
+    if ($Capture.IsPresent) {
+        return $output
     }
 }
 
@@ -474,14 +494,41 @@ Write-Detail "Schema is current."
 # --- first account -----------------------------------------------------------
 
 if (-not $SkipAdminAccount.IsPresent) {
-    $accountCount = & $venvPython -c "from app.db import init_engine; from app.repositories import UserStore; init_engine(); print(UserStore().count())" 2>$null
+    # From the install's backend directory, like every other call into it. Run
+    # from wherever the operator happened to be, "app" is not importable and
+    # this raised a traceback instead of returning a number.
+    $countAccounts = 'from app.db import init_engine; from app.repositories import UserStore; init_engine(); print(UserStore().count())'
 
-    if ($LASTEXITCODE -eq 0 -and $accountCount -eq '0') {
+    $accountCount = $null
+    try {
+        $accountCount = Invoke-Native -Executable $venvPython -Arguments @('-c', $countAccounts) `
+            -WorkingDirectory (Join-Path $InstallRoot 'backend') `
+            -What 'Counting accounts' -Capture
+    } catch {
+        # Not fatal. The install is complete either way, and an operator who is
+        # told to run one command is better off than one whose install stopped
+        # after copying the files.
+        Write-Warn "Could not count existing accounts: $($_.Exception.Message)"
+    }
+
+    if ($null -eq $accountCount) {
+        Write-Warn "Create the first account with:"
+        Write-Warn "  cd `"$InstallRoot\backend`"; .\..\.venv\Scripts\python.exe -m app.auth.create_admin"
+    } elseif ("$accountCount".Trim() -eq '0') {
         Write-Step "Creating the first account"
         Write-Detail "The password is read from a hidden prompt and is not echoed."
-        Invoke-Interactive -Executable $venvPython -Arguments @('-m', 'app.auth.create_admin') `
-            -WorkingDirectory (Join-Path $InstallRoot 'backend') -What 'Creating the first account'
-    } elseif ($LASTEXITCODE -eq 0) {
+        try {
+            Invoke-Interactive -Executable $venvPython -Arguments @('-m', 'app.auth.create_admin') `
+                -WorkingDirectory (Join-Path $InstallRoot 'backend') -What 'Creating the first account'
+        } catch {
+            # Two mistyped passwords should not undo an install. Everything
+            # that matters is already in place; the services still need
+            # registering, and this is a command that can be repeated.
+            Write-Warn "No account was created."
+            Write-Warn "Run this when ready, then log in:"
+            Write-Warn "  cd `"$InstallRoot\backend`"; `"$venvPython`" -m app.auth.create_admin"
+        }
+    } else {
         Write-Detail "$accountCount account(s) already exist; not prompting."
     }
 }
@@ -557,3 +604,9 @@ Write-Host "  Config:     $configFile"
 Write-Host "  Data:       $DataDir"
 Write-Host "  Logs:       $(Join-Path $DataDir 'logs')"
 Write-Host ""
+
+# Explicit, because $LASTEXITCODE still holds whatever the last native command
+# returned. A step that was allowed to fail without stopping the install - a
+# mistyped password, a service that would not start - would otherwise leave a
+# finished install reporting failure to whoever checked.
+exit 0
