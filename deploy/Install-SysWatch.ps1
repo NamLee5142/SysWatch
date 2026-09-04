@@ -548,11 +548,42 @@ if ($SkipServices.IsPresent) {
     [Environment]::SetEnvironmentVariable('SYSWATCH_CONFIG_FILE', $configFile, 'Machine')
     Write-Detail "Set SYSWATCH_CONFIG_FILE for the machine."
 
-    & (Join-Path $InstallRoot 'agent\agent.exe') --install
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warn "The agent service did not install (exit $LASTEXITCODE)."
+    $agentBinaryInstalled = Join-Path $InstallRoot 'agent\agent.exe'
+    $expectedPath = '"{0}" --service' -f $agentBinaryInstalled
+    $registeredPath = $null
+
+    if (Get-Service -Name $AgentServiceName -ErrorAction SilentlyContinue) {
+        $registeredPath = (Get-CimInstance Win32_Service -Filter "Name='$AgentServiceName'").PathName
+    }
+
+    if ($registeredPath -eq $expectedPath) {
+        # The normal case on an upgrade. Asking agent.exe to install over
+        # itself only produces "already installed. Run --uninstall first" and
+        # a non-zero exit, which reads as a broken upgrade when nothing is
+        # wrong at all.
+        Write-Detail "$AgentServiceName already registered."
     } else {
-        Write-Detail "$AgentServiceName registered."
+        if ($registeredPath) {
+            # An install into a different directory leaves the registration
+            # pointing at the old binary, so the service keeps running the
+            # version that was just replaced - an upgrade that reports success
+            # and changes nothing.
+            Write-Detail "Re-registering $AgentServiceName, which points at $registeredPath"
+            try {
+                Invoke-Native -Executable $agentBinaryInstalled -Arguments @('--uninstall') `
+                    -What 'Removing the previous registration'
+            } catch {
+                Write-Warn $_.Exception.Message
+            }
+        }
+
+        try {
+            Invoke-Native -Executable $agentBinaryInstalled -Arguments @('--install') `
+                -What 'Registering the agent service'
+            Write-Detail "$AgentServiceName registered."
+        } catch {
+            Write-Warn $_.Exception.Message
+        }
     }
 
     # The backend is a Python process and does not speak the service control
