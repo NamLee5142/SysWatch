@@ -270,8 +270,15 @@ void HTTPServer::start() {
 
     int opt = 1;
 #if defined(_WIN32)
-    setsockopt(listenSocket_, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
+    // SO_EXCLUSIVEADDRUSE, not SO_REUSEADDR. Windows lets a second socket bind
+    // an address another socket is already listening on when SO_REUSEADDR is
+    // set — two agents then both appear to start, requests land on whichever
+    // the OS picks, and nothing anywhere reports a problem. This is what makes
+    // the "could not listen" path in AgentRuntime reachable at all.
+    setsockopt(listenSocket_, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&opt, sizeof(opt));
 #else
+    // On POSIX the same option means the harmless thing: rebind after a
+    // previous listener's TIME_WAIT rather than steal a live one.
     setsockopt(listenSocket_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 #endif
 

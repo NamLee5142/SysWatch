@@ -11,6 +11,7 @@ add_library(agent_core STATIC
     src/scheduler/Scheduler.cpp
     src/http/HTTPServer.cpp
     src/runtime/AgentRuntime.cpp
+    src/logging/Logger.cpp
     src/http/HttpParser.cpp
     src/collector/CPUCollector.cpp
     src/collector/MemoryCollector.cpp
@@ -89,6 +90,14 @@ add_executable(http_server_accept_tests
 target_link_libraries(http_server_accept_tests PRIVATE agent_core)
 
 target_include_directories(http_server_accept_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+add_executable(logger_tests
+    tests/logger_tests.cpp
+)
+
+target_link_libraries(logger_tests PRIVATE agent_core)
+
+target_include_directories(logger_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 add_executable(agent_runtime_tests
     tests/agent_runtime_tests.cpp

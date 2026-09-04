@@ -27,6 +27,11 @@ public:
     void start();
     void stop();
 
+    // Whether the accept loop is up. start() cannot report a failed bind any
+    // other way, and "the port is already in use" is the likeliest reason a
+    // freshly installed service answers nothing.
+    bool isRunning() const { return running_.load(); }
+
 private:
     agent::Agent &agent_;
     std::thread serverThread_;

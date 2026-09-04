@@ -19,6 +19,9 @@ agent::AgentConfig testConfig(unsigned short port) {
     agent::AgentConfig config;
     config.collectionInterval = std::chrono::milliseconds(50);
     config.serverPort = port;
+    // Console only. The default path is the real installation's log, and a
+    // test run should not leave lines in it.
+    config.logPath = "";
     return config;
 }
 
