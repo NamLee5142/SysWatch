@@ -61,7 +61,7 @@ SysWatch/
             api/               # FastAPI routes
             auth/              # Passwords, sessions, dependencies, admin CLI
             client/            # HTTP client for the C++ agent
-            db/                # Engine, session scope, ORM models
+            db/                # Engine, session scope, ORM models, backup command
             models/            # Pydantic snapshot, alert and auth models
             repositories/      # Persistence boundary
             services/          # Snapshot service and background poller
@@ -80,6 +80,45 @@ SysWatch/
     README.md
     .gitignore
 ```
+
+# Database Migrations
+
+Schema changes are alembic revisions; an upgrade runs during install and again
+on every version bump.
+
+```
+alembic upgrade head
+```
+
+**Cost.** The upgrade is constant-time, not proportional to stored history.
+Measured from the Sprint 5 baseline to head:
+
+| Snapshot rows | Database size | `alembic upgrade head` |
+| --- | --- | --- |
+| 5,000 | 0.8 MB | 0.05 s |
+| 50,000 | 7.2 MB | 0.05 s |
+| 200,000 | 28.9 MB | 0.12 s |
+
+The figures are flat because the only table-altering revision adds nullable
+columns, which SQLite applies as a metadata change rather than by rewriting the
+table. A future revision that adds a NOT NULL column or changes a constraint
+would force alembic's batch mode to rebuild the table and copy every row, and
+the upgrade would then scale with how long the machine has been monitored —
+minutes, with the service down, on a database that has been collecting for a
+year. `backend/tests/test_migration_at_scale.py` fails if that happens, so the
+change is visible in review rather than during somebody's install.
+
+**Backups.** Take one before upgrading:
+
+```
+python -m app.db.backup C:\ProgramData\SysWatch\backups --keep 7
+```
+
+`VACUUM INTO`, not a file copy: in WAL mode recent commits live in a `-wal`
+sidecar, so copying the database file alone can silently lose them. Each backup
+is verified — integrity check and schema revision — before the command reports
+success. Backups contain password hashes and session token hashes; keep the
+directory out of anywhere world-readable.
 
 # Development Roadmap
 
