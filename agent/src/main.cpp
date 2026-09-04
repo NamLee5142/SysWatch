@@ -1,10 +1,8 @@
 #include <chrono>
 #include <csignal>
 #include <iostream>
-#include <thread>
-#include "agent/Agent.h"
 #include "config/AgentConfig.h"
-#include "http/HTTPServer.h"
+#include "runtime/AgentRuntime.h"
 
 namespace {
 
@@ -14,6 +12,15 @@ extern "C" void handleStopSignal(int) {
     stopRequested = 1;
 }
 
+void printSnapshot(const Snapshot &snapshot) {
+    std::cout << "Snapshot: "
+              << "CPU=" << snapshot.cpuInfo.usagePercent << "% "
+              << "Memory=" << snapshot.memoryInfo.usedMB << "MB/" << snapshot.memoryInfo.totalMB << "MB "
+              << "Disk=" << snapshot.diskInfo.freeGB << "GB free/" << snapshot.diskInfo.totalGB << "GB "
+              << "System=" << snapshot.systemInfo.name << " " << snapshot.systemInfo.version
+              << std::endl;
+}
+
 } // namespace
 
 int main() {
@@ -21,37 +28,22 @@ int main() {
     config.collectionInterval = std::chrono::seconds(2);
     config.serverPort = 8080;
 
-    agent::Agent agent(config, [](const auto &snapshot) {
-        std::cout << "Snapshot: "
-                  << "CPU=" << snapshot.cpuInfo.usagePercent << "% "
-                  << "Memory=" << snapshot.memoryInfo.usedMB << "MB/" << snapshot.memoryInfo.totalMB << "MB "
-                  << "Disk=" << snapshot.diskInfo.freeGB << "GB free/" << snapshot.diskInfo.totalGB << "GB "
-                  << "System=" << snapshot.systemInfo.name << " " << snapshot.systemInfo.version
-                  << std::endl;
-    });
-
-    http::HTTPServer server(agent, config.serverPort);
-
-    server.start();
-    agent.start();
-
     std::signal(SIGINT, handleStopSignal);
     std::signal(SIGTERM, handleStopSignal);
 
-    std::cout << "Agent started. Listening on 127.0.0.1:" << config.serverPort
-              << ". Press Ctrl+C to stop." << std::endl;
+    // Everything the console entry point adds over the shared runtime: it
+    // prints, and it stops on Ctrl+C. The lifecycle itself lives in
+    // runUntilStopped so the Windows Service can reuse it unchanged.
+    runtime::Callbacks callbacks;
+    callbacks.onSnapshot = printSnapshot;
+    callbacks.onReady = [&config] {
+        std::cout << "Agent started. Listening on 127.0.0.1:" << config.serverPort
+                  << ". Press Ctrl+C to stop." << std::endl;
+    };
 
-    // Run until interrupted. The signal handler may only touch a sig_atomic_t,
-    // so poll the flag rather than waiting on a condition variable.
-    while (stopRequested == 0) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
+    const int result = runtime::runUntilStopped(
+        config, [] { return stopRequested != 0; }, callbacks);
 
-    std::cout << "\nStopping agent." << std::endl;
-
-    agent.stop();
-    server.stop();
-
-    std::cout << "Agent stopped." << std::endl;
-    return 0;
+    std::cout << "\nAgent stopped." << std::endl;
+    return result;
 }
