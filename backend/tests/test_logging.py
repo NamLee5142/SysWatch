@@ -207,3 +207,31 @@ def test_a_failed_login_writes_no_password_either(log_dir, monkeypatch, database
 
     # The one someone typed by mistake is still someone's password somewhere.
     assert attempted not in path.read_text(encoding="utf-8", errors="replace")
+
+
+def test_per_request_chatter_is_silenced(log_dir):
+    """Loggers that emit one line per successful call are held to WARNING.
+
+    The poller calls the agent every SYSWATCH_POLL_INTERVAL_SECONDS forever.
+    At the default ten seconds, httpx's per-request INFO line is 8,640 entries
+    a day; on the first real deployment it outnumbered every application
+    logger combined. Failures still arrive - the poller reports those itself,
+    with the context httpx does not have.
+    """
+    configure_logging(Settings())
+
+    assert logging.getLogger("httpx").level == logging.WARNING
+    assert logging.getLogger("uvicorn.access").level == logging.WARNING
+
+
+def test_silencing_chatter_does_not_hide_its_failures(log_dir):
+    configure_logging(Settings())
+    path = log_dir / "syswatch.log"
+
+    logging.getLogger("httpx").info("HTTP Request: GET /snapshot 200 OK")
+    logging.getLogger("httpx").warning("HTTP Request: GET /snapshot 503")
+    logging.shutdown()
+
+    written = path.read_text(encoding="utf-8", errors="replace")
+    assert "200 OK" not in written
+    assert "503" in written

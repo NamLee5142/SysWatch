@@ -73,6 +73,18 @@ def configure_logging(settings=None):
     # Access logs are one line per request and say nothing a failure does not.
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
+    # The same argument, outbound. httpx logs a line per request, and the
+    # poller calls the agent every SYSWATCH_POLL_INTERVAL_SECONDS forever: at
+    # the default ten seconds that is 8,640 lines a day reporting that the
+    # thing that works, worked. On the first real deployment it was 8,432 of
+    # the 11,300 lines in the log, more than every application logger put
+    # together, and it buries the ones that mean something.
+    #
+    # Nothing is lost by silencing it. A poll that fails is reported by
+    # app.services.snapshot_poller, which knows what the request was for;
+    # httpx only knows that a GET happened.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     return log_file
 
 
