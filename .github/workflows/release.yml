@@ -115,7 +115,7 @@ jobs:
           (cd dist && 7z a -tzip "SysWatch-$version.zip" "SysWatch-$version" >/dev/null)
           ls -la dist/*.zip
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: syswatch-package
           path: dist/*.zip

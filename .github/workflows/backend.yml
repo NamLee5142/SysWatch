@@ -75,7 +75,7 @@ jobs:
 
       # Once, not once per interpreter: the source is identical across the
       # matrix, and two jobs uploading the same artifact name is an error.
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: matrix.python == '3.14'
         with:
           name: backend

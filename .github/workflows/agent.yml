@@ -85,7 +85,7 @@ jobs:
 
       # Statically linked, so this one file is the whole agent - which is what
       # makes it worth keeping from a run that is not a release.
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: agent
           path: agent/build/agent.exe
