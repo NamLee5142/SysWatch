@@ -63,19 +63,31 @@ def warn_about_a_stray_database(settings, logger):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app_logging.configure_logging()
-    logger = logging.getLogger("uvicorn")
-    logger.info("Starting SysWatch Backend")
-
     settings = get_settings()
+    ensure_data_dir(settings)
 
-    # Before anything else: a process that cannot authenticate safely should
-    # fail loudly here rather than serve traffic and find out later.
+    # Configured before anything else is logged, or the first few lines of a
+    # failed startup — the ones that say why — go to a console nobody is
+    # watching and never reach the file.
+    log_file = app_logging.configure_logging(settings)
+    logger = logging.getLogger("uvicorn")
+
+    logger.info("Starting SysWatch Backend")
+    logger.info("Data directory: %s", settings.data_dir)
+    logger.info("Log file: %s", log_file or "none (console only)")
+    logger.info("Agent: %s", settings.agent_base_url)
+    logger.info(
+        "Authentication: %s | polling: %s | alerts: %s",
+        "on" if settings.auth_enabled else "OFF",
+        "on" if settings.polling_enabled else "off",
+        "on" if settings.alerts_enabled else "off",
+    )
+
+    # A process that cannot authenticate safely should fail loudly here rather
+    # than serve traffic and find out later.
     for warning in verify_security_configuration(settings):
         logger.warning(warning)
 
-    data_dir = ensure_data_dir(settings)
-    logger.info("Data directory: %s", data_dir)
     warn_about_a_stray_database(settings, logger)
 
     # The engine holds a connection pool and is created once here rather than
@@ -91,13 +103,20 @@ async def lifespan(app: FastAPI):
 
     app.state.poller = poller
 
+    reason = "requested"
     try:
         yield
+    except BaseException as stopping:
+        # Says which signal or error took the process down, rather than leaving
+        # a log that simply stops.
+        reason = f"{type(stopping).__name__}: {stopping}" if str(stopping) else type(stopping).__name__
+        raise
     finally:
+        logger.info("Shutting down SysWatch Backend (%s)", reason)
         if poller is not None:
             await poller.stop()
         dispose_engine()
-        logger.info("Shutting down SysWatch Backend")
+        logger.info("Shutdown complete")
 
 
 # Everything the backend answers hangs off this. The dashboard owns every

@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     data_dir: str = ""
     database_url: str = ""
     log_dir: str = ""
+    log_level: str = "INFO"
     polling_enabled: bool = True
     poll_interval_seconds: float = 10.0
     # Snapshots older than this are pruned. 0 keeps them forever.
