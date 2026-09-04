@@ -12,6 +12,8 @@ add_library(agent_core STATIC
     src/http/HTTPServer.cpp
     src/runtime/AgentRuntime.cpp
     src/logging/Logger.cpp
+    src/runtime/CommandLine.cpp
+    src/service/WindowsService.cpp
     src/http/HttpParser.cpp
     src/collector/CPUCollector.cpp
     src/collector/MemoryCollector.cpp
@@ -32,7 +34,8 @@ endif()
 if (WIN32)
     # ws2_32 for the HTTP server socket, psapi for GetProcessMemoryInfo in the
     # process collector, iphlpapi for GetIfTable2 in the network collector.
-    target_link_libraries(agent_core PRIVATE ws2_32 psapi iphlpapi)
+    # advapi32 for the Service Control Manager calls in WindowsService.cpp.
+    target_link_libraries(agent_core PRIVATE ws2_32 psapi iphlpapi advapi32)
 endif()
 
 add_executable(agent
@@ -90,6 +93,14 @@ add_executable(http_server_accept_tests
 target_link_libraries(http_server_accept_tests PRIVATE agent_core)
 
 target_include_directories(http_server_accept_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+add_executable(command_line_tests
+    tests/command_line_tests.cpp
+)
+
+target_link_libraries(command_line_tests PRIVATE agent_core)
+
+target_include_directories(command_line_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 add_executable(logger_tests
     tests/logger_tests.cpp

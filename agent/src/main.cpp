@@ -3,6 +3,8 @@
 #include <iostream>
 #include "config/AgentConfig.h"
 #include "runtime/AgentRuntime.h"
+#include "runtime/CommandLine.h"
+#include "service/WindowsService.h"
 
 namespace {
 
@@ -21,19 +23,13 @@ void printSnapshot(const Snapshot &snapshot) {
               << std::endl;
 }
 
-} // namespace
-
-int main() {
-    agent::AgentConfig config;
-    config.collectionInterval = std::chrono::seconds(2);
-    config.serverPort = 8080;
-
+int runInConsole(const agent::AgentConfig &config) {
     std::signal(SIGINT, handleStopSignal);
     std::signal(SIGTERM, handleStopSignal);
 
-    // Everything the console entry point adds over the shared runtime: it
-    // prints, and it stops on Ctrl+C. The lifecycle itself lives in
-    // runUntilStopped so the Windows Service can reuse it unchanged.
+    // Everything the console adds over the shared runtime: it prints snapshots,
+    // and it stops on Ctrl+C. The lifecycle itself lives in runUntilStopped, so
+    // the service reuses it unchanged.
     runtime::Callbacks callbacks;
     callbacks.onSnapshot = printSnapshot;
     callbacks.onReady = [&config] {
@@ -46,4 +42,29 @@ int main() {
 
     std::cout << "\nAgent stopped." << std::endl;
     return result;
+}
+
+} // namespace
+
+int main(int argc, char **argv) {
+    agent::AgentConfig config;
+    config.collectionInterval = std::chrono::seconds(2);
+    config.serverPort = 8080;
+
+    switch (runtime::parseMode(argc, argv)) {
+        case runtime::Mode::Service:
+            return service::runAsService(config);
+
+        case runtime::Mode::Help:
+            std::cout << runtime::usage();
+            return 0;
+
+        case runtime::Mode::Unknown:
+            std::cerr << runtime::usage();
+            return 2;
+
+        case runtime::Mode::Console:
+        default:
+            return runInConsole(config);
+    }
 }
