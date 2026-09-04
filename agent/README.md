@@ -39,11 +39,58 @@ PATH="/c/mingw64/bin:$PATH" ./build/agent.exe     # Git Bash
 Listens on `127.0.0.1:8080`, collects every 2 seconds, and serves `/snapshot`
 until it receives `SIGINT` (Ctrl+C) or `SIGTERM`.
 
-**The MinGW runtime must come from the compiling toolchain.** `agent.exe` links
-`libstdc++-6.dll`, `libgcc_s_seh-1.dll` and `libwinpthread-1.dll` dynamically;
-Git Bash ships older copies in `/mingw64/bin` that shadow the real ones, and the
-process then exits 127 with no message. Putting the compiler's `bin` first fixes
-it.
+`agent.exe` is **statically linked** (`-static-libgcc -static-libstdc++
+-static`), so it imports no MinGW runtime DLL and needs nothing on `PATH`:
+
+```text
+ADVAPI32.dll  IPHLPAPI.DLL  KERNEL32.dll  WS2_32.dll  msvcrt.dll
+```
+
+That is not a preference. It once linked `libstdc++-6.dll`, `libgcc_s_seh-1.dll`
+and `libwinpthread-1.dll` dynamically, which was survivable in a shell with the
+toolchain on `PATH` and fatal as a service: LocalSystem inherits no such `PATH`,
+so the process exited 127 with no message anywhere - registered, started, and
+dead. CI checks the import table on every build for exactly this reason.
+
+## Running as a service
+
+The same binary. `--service` makes it dispatch to the Service Control Manager
+instead of running in the console, and the SCM passes that argument itself.
+
+```text
+agent.exe --install      register SysWatchAgent, starting at boot
+agent.exe --uninstall    stop and remove it
+agent.exe --service      run under the SCM. Started by the SCM, not by hand
+agent.exe --help         the list above
+```
+
+`--install` and `--uninstall` need an administrator prompt. Console mode stays
+the default, so development does not need a service install per rebuild.
+
+Installed, it runs as **LocalSystem**, starts automatically at boot, and is
+configured to restart on failure after 5 s, then 10 s, then 60 s, with the
+count resetting after a day. Kill the process and the SCM brings it back.
+
+```text
+sc.exe queryex SysWatchAgent      state and PID
+sc.exe qc SysWatchAgent           binary path, start type, account
+sc.exe qfailure SysWatchAgent     recovery actions
+```
+
+With no console to write to, a service has to leave evidence somewhere: it logs
+to `%PROGRAMDATA%\SysWatch\logs\agent.log`, rotating at 2 MB with three kept,
+appending across restarts so the line before a restart survives.
+
+```text
+2026-09-04 17:19:23,034 INFO agent: Agent starting, version 0.10.0
+2026-09-04 17:19:23,036 INFO agent: Listening on 127.0.0.1:8080
+2026-09-04 17:19:23,036 INFO agent: Collecting every 2000ms
+```
+
+The version comes from the repository's `VERSION` file, read by CMake at
+configure time, so a log from a machine in the field names the build that wrote
+it. [docs/deployment.md](../docs/deployment.md) covers installing the whole
+system rather than the agent alone.
 
 ## Network exposure
 

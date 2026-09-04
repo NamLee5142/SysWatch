@@ -111,8 +111,16 @@ afterwards. `cpuInfo.usagePercent` moves under load, and
 ## Configuration
 
 All settings are read from the environment with the `SYSWATCH_` prefix. Names
-are case-insensitive. There is no `.env` file support, so a secret is either
-exported by whatever starts the process or passed on the command line.
+are case-insensitive.
+
+They can also come from a config file, which is how a service is configured:
+a service has no shell to export variables in. The file is found at
+`SYSWATCH_CONFIG_FILE`, else `syswatch.env` in `SYSWATCH_DATA_DIR`, else
+`syswatch.env` in the working directory. `syswatch.env.example` documents every
+setting with real defaults; copy it, do not edit it in place.
+
+Environment variables win over the file, so a one-off override does not need
+the file edited.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -128,7 +136,12 @@ exported by whatever starts the process or passed on the command line.
 | `SYSWATCH_SESSION_SECRET` | *(none)* | HMAC key for session tokens. **Required**; startup fails without it |
 | `SYSWATCH_SESSION_TTL_SECONDS` | `28800` | Session lifetime from login, absolute |
 | `SYSWATCH_DEV_MODE` | `false` | Drops the cookie's `Secure` flag and permits a missing secret |
-| `SYSWATCH_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to call this API |
+| `SYSWATCH_CORS_ORIGINS` | *(empty)* | Browser origins allowed to call this API. Empty is right when the backend serves the dashboard |
+| `SYSWATCH_CONFIG_FILE` | *(none)* | Path to the config file. Set machine-wide by the installer |
+| `SYSWATCH_DATA_DIR` | `%PROGRAMDATA%\SysWatch`, or `./data` in dev mode | Everything else derives from it, so moving this moves the installation |
+| `SYSWATCH_LOG_DIR` | `<data dir>\logs` | Where `syswatch.log` is written |
+| `SYSWATCH_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR`. Rotates at 5 MB, five kept |
+| `SYSWATCH_DASHBOARD_DIR` | *(none)* | Built dashboard to serve. Unset serves the API only |
 
 ```bash
 SYSWATCH_AGENT_BASE_URL=http://192.168.1.50:8080 python run.py
@@ -142,12 +155,17 @@ the way any other shell variable is:
 SYSWATCH_CORS_ORIGINS=http://localhost:5173,http://192.168.1.50:5173 python run.py
 ```
 
-The two default origins are both spellings of the Vite dev server — a browser
-treats `localhost` and `127.0.0.1` as different origins even on the same
-machine, so both are listed. Credentials **are** allowed for the configured
-origins, because the session is a cookie and the browser would otherwise send it
-on no cross-origin request. That is also why `"*"` is refused outright — see
-[Deployment](#deployment).
+The default is empty, and that is usually correct: when this process serves
+the dashboard from `SYSWATCH_DASHBOARD_DIR` the two are the same origin, and in
+development the Vite dev server proxies `/api` so they are the same origin
+there too. Only a dashboard hosted somewhere else needs this set.
+
+Credentials **are** allowed for the configured origins, because the session is
+a cookie and the browser would otherwise send it on no cross-origin request.
+That is also why `"*"` is refused outright — see [Deployment](#deployment).
+Outside dev mode an origin that is not `https://` is refused as well: the
+cookie is `Secure`, so a browser on a plain-HTTP origin would never send it
+back, and the symptom would be a login that appears to work and then does not.
 
 An invalid value is rejected at startup — a non-numeric `SYSWATCH_PORT` or a
 `SYSWATCH_RETENTION_DAYS=forever` raises a `ValidationError` rather than
@@ -292,8 +310,21 @@ behind a load balancer.
 
 ## Deployment
 
+For installing on a Windows machine - the installer, upgrades, backups,
+services, and what each startup failure means - see
+[docs/deployment.md](../docs/deployment.md). This section is the reasoning
+behind the settings that document uses.
+
 The defaults assume the backend and the dashboard are reached through one origin
-and that TLS is terminated in front of this process.
+and that TLS is terminated in front of this process. Serving the dashboard from
+this process (`SYSWATCH_DASHBOARD_DIR`) is the simplest way to get that: one
+port, one origin, and the cookie and CORS questions stop existing.
+
+**Run it with `serve.py`, not `run.py`.** `run.py` reloads on every edit, which
+is what development wants and what a service manager must never be given.
+`serve.py` reads the same settings, does not reload, and refuses `--workers`
+with a reason: the poller would run in every worker and collect N times over,
+the login rate limit is counted in memory, and SQLite serialises writers.
 
 **Generate a secret.** There is no default, and the process refuses to start
 without one:
@@ -323,9 +354,10 @@ logged-in user visits call this API as them.
 **Response headers.** Every response carries `X-Content-Type-Options: nosniff`,
 `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and
 `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`. The
-documentation UI at `/docs` is exempt from the CSP only — it loads its own
-scripts. `/docs` and `/openapi.json` are public; put them behind the proxy if
-the API surface itself is sensitive.
+documentation UI is exempt from the CSP only — it loads its own scripts. It is
+served at `/docs`, outside the `/api` prefix, and is switched off entirely
+unless `SYSWATCH_DEV_MODE` is set, so in production there is nothing there to
+put behind a proxy.
 
 **Do not expose the agent.** It has no authentication and binds `127.0.0.1` on
 purpose. See [the agent README](../agent/README.md#network-exposure).
@@ -424,8 +456,18 @@ housekeeping must never be the reason collection stops.
 
 ## API
 
+**Every endpoint below is under `/api`.** `GET /health` is served at
+`/api/health`, and so on. The prefix exists because this process also serves
+the dashboard, whose client-side routes include `/alerts` — without it a deep
+link to the alerts page and the alerts endpoint are the same URL, and one of
+them has to lose.
+
 Interactive documentation is served at `/docs`, with the raw schema at
-`/openapi.json`.
+`/openapi.json`. Those two are *not* under the prefix - they belong to the
+application rather than to a router. Both are switched off unless
+`SYSWATCH_DEV_MODE` is set, and answer `404` otherwise: they are a development
+tool, and in production a free, always-current map of every endpoint and
+request shape offered to anyone who can reach the port.
 
 | Endpoint | Source | While the agent is down |
 | --- | --- | --- |
@@ -438,8 +480,10 @@ Interactive documentation is served at `/docs`, with the raw schema at
 | `GET /alerts`, `/alerts/active`, `/alerts/{id}` | Database | Still works |
 | `GET`/`POST`/`PUT`/`DELETE /alert-rules` | Database | Still works |
 | `POST /auth/login`, `/auth/logout`, `GET /auth/me` | Database | Still works |
+| `GET /ready` | Database | Still works; reports what is missing |
 
-Everything above except `GET /health` and `GET /` requires a session; the
+Everything above except `GET /health`, `GET /ready` and `GET /` requires a
+session; the
 three alert-rule writes additionally require the `admin` role. See
 [Authentication](#authentication).
 
@@ -449,8 +493,46 @@ Service identity. Returns `200` with `{"service": "syswatch-backend"}`.
 
 ### `GET /health`
 
-Liveness check. Returns `200` with `{"status": "ok"}`. Does not contact the
-agent, so it stays responsive while the agent is down.
+Liveness check. Returns `200` with `{"status": "ok", "version": "0.10.0"}`. The
+body is a literal - it contacts nothing - so it stays responsive while the
+agent is down, and answers the one question a supervisor needs: did this
+process respond. The version rides along because this is the endpoint a
+deployment check already calls, and "which build is running" is the next thing
+asked after "is it up".
+
+### `GET /ready`
+
+Readiness check, and a different question from liveness: is the database
+reachable, is the schema at the revision this build expects, does any account
+exist to log in with.
+
+```json
+{
+  "status": "ready",
+  "checks": {"database": "ok", "schema": "ok", "accounts": "ok"}
+}
+```
+
+Returns `503` when it is not, with the same shape and the failing check
+replaced by what is missing, as an instruction rather than a stack trace:
+
+```json
+{
+  "status": "not ready",
+  "checks": {
+    "database": "ok",
+    "schema": "the schema is not initialised; run 'alembic upgrade head'",
+    "accounts": "no accounts exist; run 'python -m app.auth.create_admin'"
+  }
+}
+```
+
+Unauthenticated, because a supervisor has no session, and a readiness check
+that needs one cannot be used before anybody has logged in.
+
+Conflating this with `/health` makes restarts fix nothing: a process that is
+running perfectly against an unmigrated database is alive and not ready, and
+restarting it will not migrate anything.
 
 ### `GET /snapshot`
 

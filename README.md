@@ -46,6 +46,23 @@ SysWatch is a client-server monitoring system. It collects hardware and operatin
     (InfluxDB, TimescaleDB, etc.)   (Grafana/Web App)
 ```
 
+# Installing
+
+For a Windows machine, from an elevated prompt:
+
+```text
+powershell -ExecutionPolicy Bypass -File deploy\Install-SysWatch.ps1
+```
+
+It installs the agent as a service, sets up the backend and the dashboard,
+migrates the database and prompts for the first account. Running it again over
+an existing install upgrades in place: it backs up the database first and keeps
+the session secret, so nobody is signed out.
+
+[docs/deployment.md](docs/deployment.md) covers upgrades, backups and restores,
+reading the service state, managing accounts, and what each startup failure
+means.
+
 # Repository Structure
 
 ```text
@@ -175,11 +192,15 @@ directory out of anywhere world-readable.
 
 - [ ] Docker images
 - [ ] Kubernetes deployment
-- [ ] CI/CD pipeline
-- [ ] Unit tests
-- [ ] Integration tests
+- [x] CI/CD pipeline
+- [x] Unit tests
+- [x] Integration tests
 - [ ] Performance optimization
-- [ ] Security hardening
-- [ ] Complete documentation
+- [x] Security hardening
+- [x] Complete documentation
+
+Docker and Kubernetes stay unticked deliberately: this release targets a
+Windows install, and containers are a different deployment story that would
+want PostgreSQL first.
 
 ---
