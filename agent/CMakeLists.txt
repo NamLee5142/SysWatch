@@ -28,8 +28,16 @@ target_include_directories(agent_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 target_compile_features(agent_core PUBLIC cxx_std_17)
 
+# Static, and on the executable rather than the library.
+#
+# agent_core is a static library and has no link step, so link options set on
+# it never reach agent.exe — which was therefore importing libstdc++-6.dll,
+# libgcc_s_seh-1.dll and libwinpthread-1.dll from whatever happened to be on
+# PATH. That is fine in a shell with the toolchain on PATH and fatal
+# everywhere else: the process exits 127 with no message, so a service
+# installed this way would be registered, start, and die silently.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_link_options(agent_core PRIVATE "-static-libgcc" "-static-libstdc++")
+    set(AGENT_STATIC_LINK_OPTIONS -static-libgcc -static-libstdc++ -static)
 endif()
 
 if (WIN32)
@@ -46,6 +54,10 @@ add_executable(agent
 target_link_libraries(agent PRIVATE agent_core)
 
 target_include_directories(agent PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+if (AGENT_STATIC_LINK_OPTIONS)
+    target_link_options(agent PRIVATE ${AGENT_STATIC_LINK_OPTIONS})
+endif()
 
 add_executable(agent_tests
     tests/scheduler_lifecycle_tests.cpp
