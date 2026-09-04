@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.security import API_CONTENT_SECURITY_POLICY
+from app.version import VERSION
 
 INDEX_HTML = "<!doctype html><title>SysWatch</title><div id=root></div>"
 ASSET_JS = "console.log('bundle')"
@@ -68,7 +69,7 @@ def test_an_unmatched_api_path_stays_a_json_404(client):
 
 
 def test_a_real_api_route_is_unaffected(client):
-    assert client.get("/api/health").json() == {"status": "ok"}
+    assert client.get("/api/health").json() == {"status": "ok", "version": VERSION}
 
 
 def test_a_protected_api_route_still_answers_401_not_html(client):

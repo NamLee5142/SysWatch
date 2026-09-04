@@ -13,6 +13,7 @@ from app.db import session as db_session
 from app.db.models import Base
 from app.main import create_app
 from app.readiness import expected_revision, readiness
+from app.version import VERSION
 
 
 @pytest.fixture
@@ -48,7 +49,8 @@ def migrated(client):
 
 
 def test_health_is_a_literal(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    """Still a literal: the version is read once at import, not per request."""
+    assert client.get("/health").json() == {"status": "ok", "version": VERSION}
 
 
 def test_health_stays_green_with_nothing_behind_it(database):

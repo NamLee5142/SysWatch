@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.readiness import readiness
+from app.version import VERSION
 
 router = APIRouter()
 
@@ -11,7 +12,11 @@ async def health_check():
     # Deliberately a literal, and deliberately not authenticated. It answers one
     # question — did this process respond — which is the one a supervisor needs
     # to decide whether restarting it is worth trying.
-    return {"status": "ok"}
+    #
+    # The version rides along because this is the endpoint a deployment check
+    # already calls, and "which build is actually running" is the next thing
+    # asked after "is it up" — usually while something is wrong.
+    return {"status": "ok", "version": VERSION}
 
 
 # sync def so FastAPI runs the blocking database work in a threadpool

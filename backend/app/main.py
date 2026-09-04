@@ -14,6 +14,7 @@ from app.db import dispose_engine, init_engine
 from app.repositories import AlertRuleStore, AlertStore, SnapshotStore
 from app.security import SecurityHeadersMiddleware, verify_security_configuration
 from app.spa import mount_dashboard
+from app.version import VERSION
 from app.services.snapshot_poller import SnapshotPoller
 from app.services.snapshot_service import SnapshotService
 from config import ensure_data_dir, get_settings
@@ -73,7 +74,7 @@ async def lifespan(app: FastAPI):
     log_file = app_logging.configure_logging(settings)
     logger = logging.getLogger("uvicorn")
 
-    logger.info("Starting SysWatch Backend")
+    logger.info("Starting SysWatch Backend %s", VERSION)
     logger.info("Data directory: %s", settings.data_dir)
     logger.info("Log file: %s", log_file or "none (console only)")
     logger.info("Agent: %s", settings.agent_base_url)

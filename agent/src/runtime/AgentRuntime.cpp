@@ -22,7 +22,9 @@ int runUntilStopped(const agent::AgentConfig &config,
                     Callbacks callbacks) {
     logging::Logger log(config.logPath);
 
-    log.info("Agent starting");
+    // SYSWATCH_VERSION comes from the VERSION file by way of CMake, so a log
+    // from a machine in the field names the build that wrote it.
+    log.info(std::string("Agent starting, version ") + SYSWATCH_VERSION);
     if (!log.writingToFile() && !config.logPath.empty()) {
         log.warning("No log file; running with console output only");
     }

@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.15)
-project(agent VERSION 0.1 LANGUAGES CXX)
+
+# One version for the whole product, read from the file the backend and the
+# dashboard also take it from. Read before project(), which is the only place
+# CMake will accept it.
+#
+# CONFIGURE_DEPENDS has no equivalent here: CMake caches this at configure time,
+# so editing VERSION means re-running cmake. That is what the sync script and
+# its --check mode are for.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" SYSWATCH_VERSION)
+string(STRIP "${SYSWATCH_VERSION}" SYSWATCH_VERSION)
+
+project(agent VERSION ${SYSWATCH_VERSION} LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,6 +38,10 @@ add_library(agent_core STATIC
 )
 
 target_include_directories(agent_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
+
+# PUBLIC so the tests see the same string the agent logs, rather than a second
+# copy that can disagree with it.
+target_compile_definitions(agent_core PUBLIC SYSWATCH_VERSION="${SYSWATCH_VERSION}")
 
 target_compile_features(agent_core PUBLIC cxx_std_17)
 
@@ -78,6 +93,7 @@ function(add_agent_test name source)
     set_tests_properties(${name} PROPERTIES TIMEOUT 60)
 endfunction()
 
+add_agent_test(version_tests tests/version_tests.cpp)
 add_agent_test(agent_tests tests/scheduler_lifecycle_tests.cpp)
 add_agent_test(agent_runtime_tests tests/agent_runtime_tests.cpp)
 add_agent_test(command_line_tests tests/command_line_tests.cpp)
