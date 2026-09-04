@@ -14,6 +14,7 @@ add_library(agent_core STATIC
     src/logging/Logger.cpp
     src/runtime/CommandLine.cpp
     src/service/WindowsService.cpp
+    src/service/ServiceInstall.cpp
     src/http/HttpParser.cpp
     src/collector/CPUCollector.cpp
     src/collector/MemoryCollector.cpp

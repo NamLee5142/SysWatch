@@ -10,6 +10,10 @@ enum class Mode {
     // Started by the Service Control Manager. Never run this by hand — without
     // the SCM on the other end the dispatcher just fails.
     Service,
+    // Register with, or remove from, the Service Control Manager. Both need
+    // administrator rights and say so when they do not have them.
+    Install,
+    Uninstall,
     Help,
     Unknown,
 };

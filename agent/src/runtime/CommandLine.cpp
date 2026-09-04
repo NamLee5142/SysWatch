@@ -21,6 +21,12 @@ Mode parseMode(int argc, const char *const *argv) {
     if (std::strcmp(argument, "--service") == 0) {
         return Mode::Service;
     }
+    if (std::strcmp(argument, "--install") == 0) {
+        return Mode::Install;
+    }
+    if (std::strcmp(argument, "--uninstall") == 0) {
+        return Mode::Uninstall;
+    }
     if (std::strcmp(argument, "--help") == 0 || std::strcmp(argument, "-h") == 0) {
         return Mode::Help;
     }
@@ -34,6 +40,9 @@ const char *usage() {
            "  agent.exe              Run in this console. Prints snapshots, stops on Ctrl+C.\n"
            "  agent.exe --service    Run under the Windows Service Control Manager.\n"
            "                         Started by the SCM, not by hand.\n"
+           "  agent.exe --install    Register the service, starting at boot.\n"
+           "                         Needs an administrator command prompt.\n"
+           "  agent.exe --uninstall  Stop and remove the service. Administrator too.\n"
            "  agent.exe --help       This message.\n";
 }
 

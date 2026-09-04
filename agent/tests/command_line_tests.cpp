@@ -33,12 +33,20 @@ void helpIsRecognised() {
     assert(modeOf({"-h"}) == runtime::Mode::Help);
 }
 
+void installAndUninstallAreRecognised() {
+    assert(modeOf({"--install"}) == runtime::Mode::Install);
+    assert(modeOf({"--uninstall"}) == runtime::Mode::Uninstall);
+}
+
 void anythingElseIsRefused() {
     // Silently falling back to console would mean a mistyped --service starts
     // an agent the SCM is not talking to.
     assert(modeOf({"--serivce"}) == runtime::Mode::Unknown);
     assert(modeOf({"-service"}) == runtime::Mode::Unknown);
+    // Without the dashes it is not the flag, and running a console agent
+    // instead of installing one is a confusing way to find that out.
     assert(modeOf({"install"}) == runtime::Mode::Unknown);
+    assert(modeOf({"--uninstal"}) == runtime::Mode::Unknown);
     assert(modeOf({""}) == runtime::Mode::Unknown);
 }
 
@@ -51,6 +59,9 @@ void usageNamesEveryMode() {
 
     assert(text.find("--service") != std::string::npos);
     assert(text.find("--help") != std::string::npos);
+    assert(text.find("--install") != std::string::npos);
+    assert(text.find("--uninstall") != std::string::npos);
+    assert(text.find("administrator") != std::string::npos);
     assert(text.find("console") != std::string::npos);
 }
 
@@ -59,6 +70,7 @@ void usageNamesEveryMode() {
 int main() {
     bareInvocationIsAConsole();
     serviceFlagIsRecognised();
+    installAndUninstallAreRecognised();
     helpIsRecognised();
     anythingElseIsRefused();
     extraArgumentsAreRefused();

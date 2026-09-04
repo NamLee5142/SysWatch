@@ -55,6 +55,12 @@ int main(int argc, char **argv) {
         case runtime::Mode::Service:
             return service::runAsService(config);
 
+        case runtime::Mode::Install:
+            return service::install();
+
+        case runtime::Mode::Uninstall:
+            return service::uninstall();
+
         case runtime::Mode::Help:
             std::cout << runtime::usage();
             return 0;

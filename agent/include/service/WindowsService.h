@@ -21,4 +21,12 @@ constexpr const char *Description =
 // process that appears to hang.
 int runAsService(const agent::AgentConfig &config);
 
+// Registers this executable with the Service Control Manager, set to start at
+// boot and to restart itself if it fails. Returns the process exit code.
+int install();
+
+// Stops the service if it is running, then removes it. Leaves nothing behind
+// except the log, which is the one thing worth keeping.
+int uninstall();
+
 } // namespace service
