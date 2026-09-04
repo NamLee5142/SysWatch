@@ -306,7 +306,16 @@ if (-not (Test-Path -LiteralPath (Join-Path $backendSource 'serve.py'))) {
 
 $python = Get-PythonCommand
 if (-not $python) {
-    $problems += "No Python $MinimumPython or newer on PATH."
+    # The one prerequisite a clean machine will not have, and the message an
+    # operator meets first. "Not found" on its own leaves them to guess whether
+    # the problem is the version, the PATH, or the Store alias.
+    $problems += (
+        "No Python $MinimumPython or newer on PATH. Install it with " +
+        "'winget install Python.Python.3.13' or from python.org, ticking " +
+        "'Add python.exe to PATH', then open a new prompt and re-run this. " +
+        "If 'python' opens the Microsoft Store instead of running, turn off " +
+        "the App Execution Alias for it in Settings."
+    )
 }
 
 if ($problems.Count -gt 0) {
@@ -593,16 +602,68 @@ if ($SkipServices.IsPresent) {
     # can do the job.
     $nssm = Get-Command nssm -ErrorAction SilentlyContinue
     if ($nssm) {
+        $serveScript = Join-Path $InstallRoot 'backend\serve.py'
+        $backendDirectory = Join-Path $InstallRoot 'backend'
+
+        # Every one of these goes through Invoke-Native. nssm reports what it
+        # did on stderr, and a bare call would abort the install on a message
+        # that was not a failure.
+        $settings = @(
+            @('set', $BackendServiceName, 'AppDirectory', $backendDirectory),
+            @('set', $BackendServiceName, 'Start', 'SERVICE_AUTO_START'),
+            @('set', $BackendServiceName, 'AppStdout', (Join-Path $DataDir 'logs\backend-stdout.log')),
+            @('set', $BackendServiceName, 'AppStderr', (Join-Path $DataDir 'logs\backend-stderr.log')),
+            # The backend is what the dashboard is served from; if it exits,
+            # bring it back rather than leaving a monitoring system dark.
+            @('set', $BackendServiceName, 'AppExit', 'Default', 'Restart')
+        )
+
         $existing = Get-Service -Name $BackendServiceName -ErrorAction SilentlyContinue
-        if (-not $existing) {
-            & $nssm.Source install $BackendServiceName $venvPython (Join-Path $InstallRoot 'backend\serve.py')
-            & $nssm.Source set $BackendServiceName AppDirectory (Join-Path $InstallRoot 'backend')
-            & $nssm.Source set $BackendServiceName Start SERVICE_AUTO_START
-            & $nssm.Source set $BackendServiceName AppStdout (Join-Path $DataDir 'logs\backend-stdout.log')
-            & $nssm.Source set $BackendServiceName AppStderr (Join-Path $DataDir 'logs\backend-stderr.log')
-            Write-Detail "$BackendServiceName registered via nssm."
-        } else {
-            Write-Detail "$BackendServiceName already registered."
+        $registeredApp = $null
+        if ($existing) {
+            try {
+                $registeredApp = (Invoke-Native -Executable $nssm.Source `
+                    -Arguments @('get', $BackendServiceName, 'Application') `
+                    -What 'Reading the backend service' -Capture) -join ''
+            } catch {
+                Write-Warn $_.Exception.Message
+            }
+        }
+
+        try {
+            if ($existing -and $registeredApp -and $registeredApp.Trim() -ne $venvPython) {
+                # Same trap as the agent: an install into a different directory
+                # leaves the registration running the interpreter that was just
+                # replaced, and the upgrade silently changes nothing.
+                Write-Detail "Re-pointing $BackendServiceName, which runs $($registeredApp.Trim())"
+                Invoke-Native -Executable $nssm.Source `
+                    -Arguments @('set', $BackendServiceName, 'Application', $venvPython) `
+                    -What 'Re-pointing the backend service'
+                Invoke-Native -Executable $nssm.Source `
+                    -Arguments @('set', $BackendServiceName, 'AppParameters', $serveScript) `
+                    -What 'Re-pointing the backend service'
+            } elseif (-not $existing) {
+                Invoke-Native -Executable $nssm.Source `
+                    -Arguments @('install', $BackendServiceName, $venvPython, $serveScript) `
+                    -What 'Registering the backend service'
+            }
+
+            foreach ($arguments in $settings) {
+                Invoke-Native -Executable $nssm.Source -Arguments $arguments `
+                    -What "nssm $($arguments -join ' ')"
+            }
+
+            # nssm can report success and still leave nothing registered if the
+            # SCM refused it, so this asks the SCM rather than trusting nssm.
+            if (Get-Service -Name $BackendServiceName -ErrorAction SilentlyContinue) {
+                Write-Detail "$BackendServiceName registered via nssm."
+            } else {
+                Write-Warn "nssm reported success but $BackendServiceName is not registered."
+            }
+        } catch {
+            Write-Warn $_.Exception.Message
+            Write-Warn "Start the backend by hand with:"
+            Write-Warn "  `"$venvPython`" `"$serveScript`""
         }
     } else {
         Write-Warn "nssm is not installed, so the backend was not registered as a service."

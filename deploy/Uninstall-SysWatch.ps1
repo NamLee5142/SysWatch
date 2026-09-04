@@ -113,13 +113,29 @@ if (Test-Path -LiteralPath $agentBinary) {
 }
 
 if (Get-Service -Name $BackendServiceName -ErrorAction SilentlyContinue) {
-    $nssm = Get-Command nssm -ErrorAction SilentlyContinue
-    if ($nssm) {
-        & $nssm.Source remove $BackendServiceName confirm | Out-Null
-    } else {
-        & sc.exe delete $BackendServiceName | Out-Null
+    # nssm writes what it did to stderr, which $ErrorActionPreference = 'Stop'
+    # turns into a terminating error - so an uninstall would abort partway,
+    # having stopped the services and removed nothing.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $nssm = Get-Command nssm -ErrorAction SilentlyContinue
+        if ($nssm) {
+            & $nssm.Source remove $BackendServiceName confirm 2>&1 | Out-Null
+        } else {
+            # nssm removed after the service was registered with it. The
+            # registration is an ordinary service entry either way.
+            & sc.exe delete $BackendServiceName 2>&1 | Out-Null
+        }
+    } finally {
+        $ErrorActionPreference = $previous
     }
-    Write-Detail "$BackendServiceName removed."
+
+    if (Get-Service -Name $BackendServiceName -ErrorAction SilentlyContinue) {
+        Write-Warn "$BackendServiceName is still registered. It may be marked for deletion until the process exits."
+    } else {
+        Write-Detail "$BackendServiceName removed."
+    }
 }
 
 # --- files -------------------------------------------------------------------
