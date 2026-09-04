@@ -28,7 +28,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # A tag that disagrees with VERSION produces a release whose contents
       # report a different version from its name - and /api/health would then
@@ -69,7 +69,7 @@ jobs:
         working-directory: agent/build
         run: ctest --output-on-failure
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -115,7 +115,7 @@ jobs:
           (cd dist && 7z a -tzip "SysWatch-$version.zip" "SysWatch-$version" >/dev/null)
           ls -la dist/*.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: syswatch-package
           path: dist/*.zip

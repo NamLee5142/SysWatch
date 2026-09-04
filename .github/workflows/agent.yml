@@ -33,7 +33,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Ninja
         run: choco install ninja --no-progress --yes
@@ -85,7 +85,7 @@ jobs:
 
       # Statically linked, so this one file is the whole agent - which is what
       # makes it worth keeping from a run that is not a release.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: agent
           path: agent/build/agent.exe

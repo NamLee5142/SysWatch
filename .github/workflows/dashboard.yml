@@ -34,9 +34,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # 22, not the 20 the sprint plan guessed at: it is what the project
           # is developed against, and Vite 8 wants 20.19+ or 22.12+ anyway.
@@ -80,7 +80,7 @@ jobs:
           test -f dist/index.html
           ls -la dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: dashboard
           path: dashboard/dist
