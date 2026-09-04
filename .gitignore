@@ -237,11 +237,45 @@ agent/*.pdb
 # Streamlit
 .streamlit/secrets.toml
 
-# SysWatch snapshot database (SQLite). WAL mode writes the -wal and -shm
-# sidecars alongside the database file.
-syswatch.db
-syswatch.db-wal
-syswatch.db-shm
+# SysWatch runtime data.
+#
+# Ignored by directory, not by filename. The individual patterns below cover
+# syswatch.db and syswatch.log, but not a rotated syswatch.log.3, a
+# VACUUM INTO backup, or anything else the application writes next to them —
+# and everything in here is either the monitored machine's own telemetry or a
+# session secret.
+backend/data/
+agent/logs/
+
+# Any SQLite database, wherever it lands — not just the one named syswatch.db.
+# `app.db.backup` takes an arbitrary destination path, so a backup written from
+# the repository root is a plausible accident, and the file it produces carries
+# every account's argon2 password hash and every live session token hash. WAL
+# mode writes the -wal and -shm sidecars alongside it.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Key material. None of this exists in the project today; these are here so that
+# the first time it does, it is already ignored rather than ignored afterwards.
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+id_rsa
+id_rsa.*
+id_ecdsa
+id_ed25519
+
+# Deployment inputs that hold values rather than describing them.
+secrets.json
+secrets.yml
+secrets.yaml
+deploy/*.local.*
 
 # Dashboard (Node / Vite). node_modules is thousands of files restored from
 # package-lock.json, so it never belongs in the repository. The build output
