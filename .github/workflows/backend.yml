@@ -72,3 +72,17 @@ jobs:
       - name: pytest
         working-directory: backend
         run: python -m pytest
+
+      # Once, not once per interpreter: the source is identical across the
+      # matrix, and two jobs uploading the same artifact name is an error.
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.14'
+        with:
+          name: backend
+          path: |
+            backend
+            !backend/tests
+            !backend/.venv
+            !backend/**/__pycache__
+            !backend/data
+          retention-days: 14
