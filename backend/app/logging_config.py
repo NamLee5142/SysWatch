@@ -41,10 +41,23 @@ def _mark(handler):
     return handler
 
 
+# Spelled out rather than read from logging.getLevelNamesMapping(), which
+# arrived in 3.11 - two releases after the 3.10 the installer accepts. Being
+# explicit also keeps the accepted values to the ones syswatch.env.example
+# documents, instead of whatever names happen to be registered.
+LEVELS = {
+    "CRITICAL": logging.CRITICAL,
+    "ERROR": logging.ERROR,
+    "WARNING": logging.WARNING,
+    "INFO": logging.INFO,
+    "DEBUG": logging.DEBUG,
+}
+
+
 def configure_logging(settings=None):
     """Install the console and file handlers. Safe to call more than once."""
     settings = settings or get_settings()
-    level = logging.getLevelNamesMapping().get(settings.log_level.upper(), logging.INFO)
+    level = LEVELS.get(settings.log_level.upper(), logging.INFO)
 
     root = logging.getLogger()
     _remove_our_handlers(root)
