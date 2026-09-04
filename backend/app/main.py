@@ -34,6 +34,7 @@ def create_poller(settings):
         store=store,
         retention_days=settings.retention_days,
         engine=engine,
+        agent_url=settings.agent_base_url,
     )
 
 

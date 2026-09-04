@@ -7,6 +7,13 @@ logger = logging.getLogger(__name__)
 DEFAULT_INTERVAL_SECONDS = 10.0
 DEFAULT_PRUNE_INTERVAL_SECONDS = 3600.0
 
+# Which consecutive failure gets a log line. An agent that is down stays down,
+# and at one line per tick a weekend outage writes tens of thousands of
+# identical tracebacks — which buries every other thing the log had to say.
+# The first is worth a traceback; after that the count is the news.
+FAILURES_WORTH_REPEATING = (1, 2, 5, 10, 50, 100, 500)
+FAILURE_REPORT_INTERVAL = 1000
+
 
 class SnapshotPoller:
     """Pulls a snapshot from the agent on a fixed interval and stores it.
@@ -23,6 +30,7 @@ class SnapshotPoller:
         retention_days=0,
         prune_interval_seconds=DEFAULT_PRUNE_INTERVAL_SECONDS,
         engine=None,
+        agent_url=None,
     ):
         self._service = service
         self._interval_seconds = interval_seconds
@@ -31,6 +39,9 @@ class SnapshotPoller:
         self._prune_interval_seconds = prune_interval_seconds
         # Optional: None when SYSWATCH_ALERTS_ENABLED is false.
         self._engine = engine
+        # Only ever used in log messages, so that two backends polling two
+        # agents are distinguishable in a log that has been copied somewhere.
+        self._agent_url = agent_url or "the agent"
         self._task = None
         self._last_prune = None
         # What the last tick did. Nothing else records it: poll_once() swallows
@@ -39,6 +50,7 @@ class SnapshotPoller:
         self._last_polled_at = None
         self._last_success_at = None
         self._last_error = None
+        self._consecutive_failures = 0
 
     @property
     def running(self):
@@ -98,16 +110,51 @@ class SnapshotPoller:
             # reachable agent, so it clears the error without counting as a
             # successful collection.
             logger.debug("Agent has no snapshot to collect yet")
+            # It answered, so whatever was wrong is over.
+            self._note_reachable()
             self._record(error=None)
         except Exception as exc:
-            logger.warning("Snapshot poll failed", exc_info=True)
+            self._note_failure(exc)
             self._record(error=f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__)
         else:
+            self._note_reachable()
             self._record(error=None, collected=True)
             # Only here — never after a failed or empty poll — so an unreachable
             # agent cannot raise a storm of false alerts. Agent-down is /status's
             # job, not the alert engine's.
             await self._evaluate_alerts(snapshot)
+
+    def _note_failure(self, exc):
+        """Report a failed poll, without reporting every one of them.
+
+        The first failure carries a traceback because it says what broke.
+        After that the traceback is identical and the only new information is
+        how long it has been going on, so the line thins out as the outage
+        lengthens.
+        """
+        self._consecutive_failures += 1
+        count = self._consecutive_failures
+
+        if count in FAILURES_WORTH_REPEATING or count % FAILURE_REPORT_INTERVAL == 0:
+            logger.warning(
+                "Snapshot poll from %s failed (%d in a row): %s",
+                self._agent_url,
+                count,
+                exc,
+                exc_info=count == 1,
+            )
+
+    def _note_reachable(self):
+        """Say so when an outage ends, and forget the count."""
+        if self._consecutive_failures:
+            # Without this the log shows an agent going down and never says it
+            # came back, which reads like an outage that is still running.
+            logger.info(
+                "Snapshot poll from %s succeeded again after %d failed attempts",
+                self._agent_url,
+                self._consecutive_failures,
+            )
+            self._consecutive_failures = 0
 
     def _record(self, error, collected=False):
         now = datetime.now(timezone.utc)
