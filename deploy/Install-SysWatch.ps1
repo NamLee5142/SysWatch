@@ -610,6 +610,16 @@ if ($SkipServices.IsPresent) {
         # that was not a failure.
         $settings = @(
             @('set', $BackendServiceName, 'AppDirectory', $backendDirectory),
+            # serve.py, relative, not the full path.
+            #
+            # nssm stores AppParameters as one string and the launcher splits
+            # it on spaces, so an absolute path under "C:\Program Files" is
+            # handed to Python as `C:\Program` - which is every default
+            # install. Quoting it would work, but getting literal quotes
+            # through PowerShell into a native command is its own fight.
+            # AppDirectory is already the backend directory, so a bare
+            # filename has no space in it and needs no quoting at all.
+            @('set', $BackendServiceName, 'AppParameters', 'serve.py'),
             @('set', $BackendServiceName, 'Start', 'SERVICE_AUTO_START'),
             @('set', $BackendServiceName, 'AppStdout', (Join-Path $DataDir 'logs\backend-stdout.log')),
             @('set', $BackendServiceName, 'AppStderr', (Join-Path $DataDir 'logs\backend-stderr.log')),
@@ -639,12 +649,9 @@ if ($SkipServices.IsPresent) {
                 Invoke-Native -Executable $nssm.Source `
                     -Arguments @('set', $BackendServiceName, 'Application', $venvPython) `
                     -What 'Re-pointing the backend service'
-                Invoke-Native -Executable $nssm.Source `
-                    -Arguments @('set', $BackendServiceName, 'AppParameters', $serveScript) `
-                    -What 'Re-pointing the backend service'
             } elseif (-not $existing) {
                 Invoke-Native -Executable $nssm.Source `
-                    -Arguments @('install', $BackendServiceName, $venvPython, $serveScript) `
+                    -Arguments @('install', $BackendServiceName, $venvPython) `
                     -What 'Registering the backend service'
             }
 

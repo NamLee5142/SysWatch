@@ -106,3 +106,26 @@ def test_nssm_is_never_called_bare():
             pytest.fail(f"bare nssm call in the installer: {stripped}")
 
     assert "$ErrorActionPreference = 'Continue'" in uninstaller
+
+
+def test_the_backend_service_is_launched_with_a_path_that_has_no_space():
+    r"""nssm splits AppParameters on spaces before handing them to the process.
+
+    The default install root is "C:\Program Files\SysWatch", so an absolute
+    script path arrives at Python as `C:\Program` and the service fails to
+    start on every default installation:
+
+        python.exe: can't open file 'C:\Program': [Errno 2] No such file
+
+    AppDirectory is already the backend directory, so the parameter is a bare
+    filename with no space in it and nothing to quote.
+    """
+    text = (DEPLOY / "Install-SysWatch.ps1").read_text(encoding="utf-8")
+
+    assert "'AppParameters', 'serve.py'" in text
+
+    # And nothing hands nssm an absolute path as an argument either.
+    for line in text.splitlines():
+        stripped = line.strip()
+        if "AppParameters" in stripped and "$serveScript" in stripped:
+            pytest.fail(f"AppParameters gets an absolute path: {stripped}")
