@@ -9,11 +9,15 @@ on:
       - "agent/**"
       - "VERSION"
       - ".github/workflows/agent.yml"
+
+  # No paths filter here, deliberately, though the push trigger above has one.
+  #
+  # A required status check that never runs is not skipped - it stays pending,
+  # and blocks the merge for good. A documentation-only pull request would be
+  # unmergeable the moment these become required checks. Running all three on
+  # every pull request costs a few minutes and makes branch protection mean
+  # what it says.
   pull_request:
-    paths:
-      - "agent/**"
-      - "VERSION"
-      - ".github/workflows/agent.yml"
   workflow_dispatch:
 
 permissions:

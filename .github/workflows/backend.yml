@@ -1,0 +1,74 @@
+name: Backend
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "backend/**"
+      - "scripts/**"
+      - "deploy/**"
+      - "VERSION"
+      - ".github/workflows/backend.yml"
+
+  # No paths filter here, deliberately, though the push trigger above has one.
+  #
+  # A required status check that never runs is not skipped - it stays pending,
+  # and blocks the merge for good. A documentation-only pull request would be
+  # unmergeable the moment these become required checks. Running all three on
+  # every pull request costs a few minutes and makes branch protection mean
+  # what it says.
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (Python ${{ matrix.python }})
+    # windows-latest, not ubuntu. config.py branches on os.name, and the
+    # non-Windows branch is not the one that ships: data lands in ./data rather
+    # than %PROGRAMDATA%\SysWatch. A green Linux run would be testing a path no
+    # deployment takes.
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the ceiling. 3.10 is what Install-SysWatch.ps1 accepts
+        # as a minimum, so without it that check is a claim nothing tests; 3.14
+        # is what the project is developed against. Every pinned dependency
+        # declares >=3.10, so the floor is a real one rather than a guess.
+        python: ["3.10", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          # The pip download cache, keyed on the lockfile. A cached virtualenv
+          # would be the unsafe version of this - it survives a dependency
+          # being removed from requirements.txt and keeps importing it.
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt
+
+      - name: Versions
+        working-directory: backend
+        run: |
+          python --version
+          python -m pip --version
+
+      # No -q: on a red run the useful output is the failure, and there is no
+      # second chance to re-run with more detail on someone else's machine.
+      - name: pytest
+        working-directory: backend
+        run: python -m pytest
