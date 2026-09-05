@@ -35,5 +35,11 @@ jobs:
           npm ci
           npm run build
 
+      - name: Install nssm
+        run: choco install nssm --no-progress --yes
+
+      - name: Install SysWatch
+        run: .\deploy\Install-SysWatch.ps1 -SkipAdminAccount
+          
       - name: Install SysWatch
         run: .\deploy\Install-SysWatch.ps1 -SkipAdminAccount
