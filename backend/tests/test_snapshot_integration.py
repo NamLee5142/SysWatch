@@ -28,14 +28,29 @@ client = TestClient(app, base_url="http://testserver/api")
 
 
 @pytest.fixture(autouse=True)
-def temp_database():
+def temp_database(tmp_path):
     """Point the whole stack at a throwaway database.
 
     /snapshot now writes what it fetches, so without this the suite would
     persist into the real syswatch.db.
+
+    On a file, not in memory, unlike the rest of the suite. These tests run a
+    real poller that writes while the test reads, and an in-memory engine gets
+    a StaticPool - one DBAPI connection shared by every session, because each
+    connection to ":memory:" would otherwise get its own private database. The
+    poller committing then invalidates the cursor the reader is fetching from:
+
+        sqlite3.InterfaceError: Cursor needed to be reset because of
+        commit/rollback and can no longer be fetched from
+
+    Nothing that ships is arranged that way. A deployed backend is file-backed,
+    so every session checks out its own connection and WAL lets a read proceed
+    while a write commits. The race belonged to the fixture, not to the code -
+    and it only lost often enough to fail on a loaded CI runner, which is a bad
+    way to find out.
     """
     db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
+    engine = db_session.init_engine(f"sqlite:///{(tmp_path / 'integration.db').as_posix()}")
     Base.metadata.create_all(engine)
 
     yield
