@@ -35,11 +35,50 @@ jobs:
           npm ci
           npm run build
 
+      # Before the installer: it decides whether the backend can be a service
+      # while it runs, so installing nssm afterwards would be too late.
       - name: Install nssm
         run: choco install nssm --no-progress --yes
 
       - name: Install SysWatch
         run: .\deploy\Install-SysWatch.ps1 -SkipAdminAccount
-          
-      - name: Install SysWatch
-        run: .\deploy\Install-SysWatch.ps1 -SkipAdminAccount
+
+      - name: Assert both services are running
+        shell: pwsh
+        run: |
+          foreach ($name in 'SysWatchAgent', 'SysWatchBackend') {
+            $deadline = (Get-Date).AddSeconds(30)
+            do {
+              $service = Get-Service -Name $name -ErrorAction SilentlyContinue
+              if ($service.Status -eq 'Running') { break }
+              Start-Sleep -Seconds 2
+            } while ((Get-Date) -lt $deadline)
+
+            if ($service.Status -ne 'Running') {
+              throw "$name is '$($service.Status)', expected Running"
+            }
+            "$name is running"
+          }
+
+      - name: Assert the backend answers
+        shell: pwsh
+        run: |
+          $deadline = (Get-Date).AddSeconds(30)
+          do {
+            try { $health = Invoke-RestMethod http://127.0.0.1:8000/api/health; break } catch { Start-Sleep -Seconds 2 }
+          } while ((Get-Date) -lt $deadline)
+
+          if ($health.version -ne (Get-Content VERSION).Trim()) {
+            throw "health reported '$($health.version)'"
+          }
+          "health: $($health | ConvertTo-Json -Compress)"
+
+      - name: Show the logs when something failed
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem C:\ProgramData\SysWatch\logs -ErrorAction SilentlyContinue
+          foreach ($log in 'syswatch.log', 'agent.log', 'backend-stderr.log') {
+            $path = "C:\ProgramData\SysWatch\logs\$log"
+            if (Test-Path $path) { "--- $log ---"; Get-Content $path -Tail 40 }
+          }
