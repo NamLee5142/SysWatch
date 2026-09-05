@@ -7,7 +7,7 @@ from app.main import create_app
 from app.models.snapshot import Snapshot
 
 app = create_app()
-client = TestClient(app)
+client = TestClient(app, base_url="http://testserver/api")
 
 VALID_PAYLOAD = {
     "collectedAt": "2026-08-12T11:15:27Z",

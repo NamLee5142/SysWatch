@@ -3,10 +3,20 @@
 #include <cassert>
 #include <iostream>
 
+namespace {
+
+// Its own port, like every other socket test. The default 8080 belongs to a
+// real agent, and since the server took SO_EXCLUSIVEADDRUSE this test fails
+// outright whenever one happens to be running — including the service, on the
+// machine most likely to be running CI.
+constexpr unsigned short TestPort = 54326;
+
+} // namespace
+
 int main() {
     try {
         agent::Agent agent;
-        http::HTTPServer server(agent);
+        http::HTTPServer server(agent, TestPort);
 
         // stop before start is safe
         server.stop();
@@ -23,7 +33,7 @@ int main() {
 
         // destructor stops running thread when leaving scope
         {
-            http::HTTPServer scopedServer(agent);
+            http::HTTPServer scopedServer(agent, TestPort);
             scopedServer.start();
         }
 

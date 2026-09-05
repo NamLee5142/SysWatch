@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -6,6 +7,16 @@ import pytest
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# Before importing anything that reads settings.
+#
+# The installer sets SYSWATCH_CONFIG_FILE for the machine, and points it at a
+# file readable by Administrators and SYSTEM only. Any test module that builds
+# an app at import - several do - would then read it, and on a developer
+# machine with SysWatch installed the whole suite died with PermissionError
+# during collection. The autouse fixture below says the same thing, but a
+# fixture cannot run before the module it protects is imported.
+os.environ["SYSWATCH_CONFIG_FILE"] = str(ROOT / "no-such-config.env")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -23,6 +34,16 @@ VIEWER_USERNAME = "test-viewer"
 # Any test asking for one of these is exercising authentication or
 # authorization, so the autouse fixture below leaves the setting alone for it.
 AUTHENTICATED_FIXTURES = {"anon_client", "viewer_client", "admin_client", "auth_enabled"}
+
+
+@pytest.fixture(autouse=True)
+def no_local_config_file(monkeypatch, tmp_path):
+    """Keep a developer's own syswatch.env out of the suite.
+
+    Settings read a config file now. One sitting in backend/ would quietly
+    change what the tests are testing, and only on that machine.
+    """
+    monkeypatch.setenv("SYSWATCH_CONFIG_FILE", str(tmp_path / "no-such-config.env"))
 
 
 @pytest.fixture(autouse=True)
@@ -99,7 +120,7 @@ def _client(app):
     # https, because outside dev_mode the session cookie carries Secure and
     # neither a browser nor httpx's jar will send it back over plain HTTP.
     # Testing over http would quietly exercise a no-cookie path instead.
-    return TestClient(app, base_url="https://testserver")
+    return TestClient(app, base_url="https://testserver/api")
 
 
 def _logged_in(app, username):

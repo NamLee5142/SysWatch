@@ -1,0 +1,87 @@
+name: Dashboard
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "dashboard/**"
+      - ".github/workflows/dashboard.yml"
+
+  # No paths filter here, deliberately, though the push trigger above has one.
+  #
+  # A required status check that never runs is not skipped - it stays pending,
+  # and blocks the merge for good. A documentation-only pull request would be
+  # unmergeable the moment these become required checks. Running all three on
+  # every pull request costs a few minutes and makes branch protection mean
+  # what it says.
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, lint, test, build
+    # ubuntu, unlike the other two jobs. The dashboard is TypeScript compiled
+    # to static files; nothing it does is platform-specific, and a Linux runner
+    # is billed at a third of a Windows one. The output is served by the
+    # backend, which is tested on Windows.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # 22, not the 20 the sprint plan guessed at: it is what the project
+          # is developed against, and Vite 8 wants 20.19+ or 22.12+ anyway.
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      # ci, not install: it installs exactly the lockfile and fails if
+      # package.json and the lockfile disagree, which is the check worth having
+      # here. `npm install` would quietly resolve the difference and test
+      # something nobody has committed.
+      - name: Install
+        working-directory: dashboard
+        run: npm ci
+
+      # Four steps rather than one `npm run build`, so a red check names which
+      # of them failed instead of leaving it to be found in the log.
+      - name: Typecheck
+        working-directory: dashboard
+        run: npx tsc -b
+
+      - name: Lint
+        working-directory: dashboard
+        run: npm run lint
+
+      - name: Test
+        working-directory: dashboard
+        run: npm run test
+
+      - name: Build
+        working-directory: dashboard
+        run: npm run build
+
+      # The backend serves this directory, and it locates index.html to answer
+      # a deep link. A build that produced no index.html would pass every step
+      # above and fail at the first page load.
+      - name: Check the build produced something servable
+        working-directory: dashboard
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          ls -la dist
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dashboard
+          path: dashboard/dist
+          retention-days: 14

@@ -4,9 +4,18 @@ React + TypeScript single-page app that renders live and historical system
 metrics from the [backend](../backend/README.md) API.
 
 ```text
-Browser  ->  Vite dev server (this app)  ->  Python backend
-             :5173                          :8000
+development   Browser  ->  Vite dev server  ->  Python backend
+                           :5173                :8000
+
+production    Browser  ->  Python backend, serving this app's dist/
+                           :8000
 ```
+
+In production the backend serves the built dashboard itself, so there is one
+process, one port and one origin. That removes CORS, removes the cross-origin
+cookie problem, and removes a second thing to install. In development the Vite
+proxy produces the same single-origin shape, so the two environments do not
+differ in the ways that usually bite.
 
 Every page polls the backend directly — there is no shared request cache and
 no state management library. A page that needs the latest snapshot fetches it
@@ -15,7 +24,7 @@ itself, on its own 5-second interval, independent of every other page. See
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22 or newer (CI builds on 22; Vite 8 wants 20.19+ or 22.12+)
 - The [backend](../backend/README.md) running and reachable — the dashboard
   renders nothing useful on its own
 
@@ -37,6 +46,11 @@ are proxied to `http://127.0.0.1:8000` (see `vite.config.ts`), so the app and
 backend appear same-origin to the browser and the backend's CORS grant is
 never exercised in development.
 
+There is deliberately **no path rewrite** in that proxy. The backend serves its
+API under `/api` as well, so a request path that works in development works
+unchanged in production - and the client has one base URL rather than one per
+environment.
+
 Start the backend first, or the earliest requests will fail with the network
 error message rather than data — see `dashboard/src/lib/errors.ts` for how
 that failure is told apart from "no data yet" and "backend rejected the
@@ -54,12 +68,19 @@ survives plain HTTP.
 npm run build
 ```
 
-Runs `tsc -b` then `vite build`, emitting a static bundle to `dist/`. A
-production build has no dev-server proxy, so requests go straight to
-`VITE_API_BASE_URL`; without it they fall back to `/api`, which only resolves
-if this bundle happens to be served from the same origin as the backend.
-There is no such deployment yet — see "Serving the built dashboard from
-FastAPI" in `docs/sprint-6.md`'s out-of-scope list.
+Runs `tsc -b` then `vite build`, emitting a static bundle to `dist/`.
+
+A production build has no dev-server proxy, so requests go to
+`VITE_API_BASE_URL`; without it they fall back to `/api`, which resolves
+because the backend serves this bundle from its own origin. Point
+`SYSWATCH_DASHBOARD_DIR` at `dist/` and the backend serves it, answering any
+route it does not recognise with `index.html` so a deep link to `/alerts`
+loads the app instead of a 404. `/api/*` never falls through to that catch-all:
+an unknown API path answers `404` as JSON, so a client bug does not arrive
+disguised as HTML.
+
+[docs/deployment.md](../docs/deployment.md) covers installing that arrangement;
+the installer does it for you.
 
 ```bash
 npm run preview   # serve the dist/ build locally, for a final check
@@ -78,7 +99,9 @@ VITE_API_BASE_URL=http://192.168.1.50:8000 npm run dev
 ```
 
 Only relevant when the backend is not reachable at the dev proxy's target, or
-in a production build that is not served from the backend's own origin. Vite
+in a production build served from somewhere other than the backend's own
+origin - which then also needs `SYSWATCH_CORS_ORIGINS` set on the backend, and
+an `https://` origin, because the session cookie is `Secure`. Vite
 only exposes variables prefixed `VITE_` to client code — see
 [`src/vite-env.d.ts`](src/vite-env.d.ts).
 

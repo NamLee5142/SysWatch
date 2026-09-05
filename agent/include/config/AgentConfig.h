@@ -1,9 +1,21 @@
 #pragma once
 
 #include <chrono>
+#include <cstdlib>
 #include <string>
 
 namespace agent {
+
+// %PROGRAMDATA%\SysWatch\logs\agent.log, beside the backend's logs, falling
+// back to a relative path where that variable does not exist.
+inline std::string defaultLogPath() {
+#if defined(_WIN32)
+    if (const char *programData = std::getenv("PROGRAMDATA")) {
+        return std::string(programData) + R"(\SysWatch\logs\agent.log)";
+    }
+#endif
+    return "logs/agent.log";
+}
 
 struct AgentConfig {
     std::chrono::milliseconds collectionInterval{std::chrono::seconds(1)};
@@ -14,7 +26,11 @@ struct AgentConfig {
     // that publishes the machine's telemetry to the network. See the comment in
     // HTTPServer::start() and http_server_bind_tests.cpp.
     unsigned short serverPort{8080};
-    std::string logPath{"logs/syswatch.log"};
+    // Absolute, and next to the backend's logs rather than relative to the
+    // working directory: a Windows Service starts in C:\Windows\System32, so a
+    // relative path would either fail on permissions or leave a log somewhere
+    // nobody thinks to look. Empty disables file logging.
+    std::string logPath{defaultLogPath()};
 };
 
 } // namespace agent

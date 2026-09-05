@@ -28,7 +28,7 @@ def bootstrap(username, role="admin", password=PASSWORD):
 
 def client(app):
     # https so the Secure session cookie is sent back — see conftest.
-    return TestClient(app, base_url="https://testserver")
+    return TestClient(app, base_url="https://testserver/api")
 
 
 def sign_in(app, username, password=PASSWORD):
@@ -147,7 +147,12 @@ def test_two_accounts_get_separate_sessions(app):
 # --- what a browser needs ---------------------------------------------------
 
 
-def test_the_dashboard_origin_can_send_credentials(app):
+def test_the_dashboard_origin_can_send_credentials(auth_enabled, database, monkeypatch):
+    # Only a deployment that serves the dashboard from another origin needs
+    # this, so it has to be configured before the app reads it.
+    monkeypatch.setenv("SYSWATCH_CORS_ORIGINS", DASHBOARD_ORIGIN)
+    app = create_app()
+
     response = client(app).options(
         "/alerts",
         headers={"Origin": DASHBOARD_ORIGIN, "Access-Control-Request-Method": "GET"},
@@ -160,7 +165,10 @@ def test_the_dashboard_origin_can_send_credentials(app):
     assert response.headers["access-control-allow-credentials"] == "true"
 
 
-def test_an_unknown_origin_cannot(app):
+def test_an_unknown_origin_cannot(auth_enabled, database, monkeypatch):
+    monkeypatch.setenv("SYSWATCH_CORS_ORIGINS", DASHBOARD_ORIGIN)
+    app = create_app()
+
     response = client(app).options(
         "/alerts",
         headers={"Origin": "http://evil.example", "Access-Control-Request-Method": "GET"},
@@ -169,6 +177,5 @@ def test_an_unknown_origin_cannot(app):
     assert "access-control-allow-origin" not in response.headers
 
 
-@pytest.mark.parametrize("path", ["/health", "/"])
-def test_the_public_routes_never_needed_a_session(app, path):
-    assert client(app).get(path).status_code == 200
+def test_health_never_needed_a_session(app):
+    assert client(app).get("/health").status_code == 200

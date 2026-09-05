@@ -6,7 +6,7 @@ from sqlalchemy import pool
 from alembic import context
 
 from app.db.models import Base
-from config import get_settings
+from config import ensure_data_dir, get_settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -22,7 +22,12 @@ if config.config_file_name is not None:
 
 # The database URL lives in settings, not alembic.ini, so migrations and the
 # application can never point at different databases.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Created here as well as at app startup: `alembic upgrade head` is the first
+# thing an install runs, and SQLite will not create a database inside a
+# directory that does not exist.
+_settings = get_settings()
+ensure_data_dir(_settings)
+config.set_main_option("sqlalchemy.url", _settings.database_url)
 
 target_metadata = Base.metadata
 

@@ -10,7 +10,7 @@ from app.main import create_app
 from app.repositories import AlertRuleStore, AlertStore
 
 app = create_app()
-client = TestClient(app)
+client = TestClient(app, base_url="http://testserver/api")
 
 VALID_RULE = {
     "name": "CPU critical",

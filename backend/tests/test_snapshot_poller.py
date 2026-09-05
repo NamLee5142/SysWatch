@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.client.errors import AgentConnectionError
-from app.services.snapshot_poller import SnapshotPoller
+from app.services.snapshot_poller import FAILURES_WORTH_REPEATING, SnapshotPoller
 
 
 class FakeService:
@@ -62,9 +62,10 @@ def test_failure_is_logged_as_a_warning(caplog):
     service = FakeService(errors=[RuntimeError("agent returned 500")])
 
     with caplog.at_level("WARNING"):
-        asyncio.run(SnapshotPoller(service).poll_once())
+        asyncio.run(SnapshotPoller(service, agent_url="http://127.0.0.1:8080").poll_once())
 
-    assert "Snapshot poll failed" in caplog.text
+    assert "Snapshot poll from http://127.0.0.1:8080 failed (1 in a row)" in caplog.text
+    assert "agent returned 500" in caplog.text
 
 
 def test_missing_snapshot_is_not_logged_as_a_warning(caplog):
@@ -365,3 +366,119 @@ def test_poller_without_an_engine_still_polls():
     asyncio.run(SnapshotPoller(service).poll_once())
 
     assert service.calls == 1
+
+
+# --- an outage should not bury the log ---------------------------------------
+
+
+def poll_failing(poller, times):
+    async def scenario():
+        for _ in range(times):
+            await poller.poll_once()
+
+    asyncio.run(scenario())
+
+
+def always_failing(**kwargs):
+    class AlwaysDown:
+        def get_snapshot(self):
+            raise AgentConnectionError("connection refused")
+
+    return SnapshotPoller(AlwaysDown(), agent_url="http://127.0.0.1:8080", **kwargs)
+
+
+def failure_lines(caplog):
+    return [r for r in caplog.records if "failed (" in r.getMessage()]
+
+
+def test_a_long_outage_is_reported_a_handful_of_times(caplog):
+    poller = always_failing()
+
+    with caplog.at_level("WARNING"):
+        poll_failing(poller, 600)
+
+    # 600 ticks is under two hours at the default interval. One line each would
+    # bury everything else the log had to say.
+    assert len(failure_lines(caplog)) == len(FAILURES_WORTH_REPEATING)
+
+
+def test_only_the_first_failure_carries_a_traceback(caplog):
+    poller = always_failing()
+
+    with caplog.at_level("WARNING"):
+        poll_failing(poller, 10)
+
+    lines = failure_lines(caplog)
+    # After the first, the traceback is identical and the count is the news.
+    # `not` rather than `is None`: logging stores exc_info=False verbatim.
+    assert lines[0].exc_info
+    assert all(not line.exc_info for line in lines[1:])
+
+
+def test_the_message_says_how_long_it_has_been_going_on(caplog):
+    poller = always_failing()
+
+    with caplog.at_level("WARNING"):
+        poll_failing(poller, 10)
+
+    assert "failed (10 in a row)" in failure_lines(caplog)[-1].getMessage()
+
+
+def test_the_message_names_the_agent(caplog):
+    poller = always_failing()
+
+    with caplog.at_level("WARNING"):
+        poll_failing(poller, 1)
+
+    # Two backends polling two agents have to be distinguishable in a log that
+    # has been copied somewhere else.
+    assert "http://127.0.0.1:8080" in caplog.text
+
+
+def test_recovery_is_reported(caplog):
+    service = FakeService(errors=[AgentConnectionError("down")] * 3)
+    poller = SnapshotPoller(service, agent_url="http://127.0.0.1:8080")
+
+    async def scenario():
+        for _ in range(4):
+            await poller.poll_once()
+
+    with caplog.at_level("INFO"):
+        asyncio.run(scenario())
+
+    # Without this the log shows an agent going down and never says it came
+    # back, which reads like an outage that is still running.
+    assert "succeeded again after 3 failed attempts" in caplog.text
+
+
+def test_an_agent_with_nothing_yet_counts_as_recovery(caplog):
+    service = FakeService(errors=[AgentConnectionError("down"), LookupError("nothing yet")])
+    poller = SnapshotPoller(service, agent_url="http://127.0.0.1:8080")
+
+    async def scenario():
+        await poller.poll_once()
+        await poller.poll_once()
+
+    with caplog.at_level("INFO"):
+        asyncio.run(scenario())
+
+    # It answered, so whatever was wrong is over — even though no snapshot came.
+    assert "succeeded again after 1 failed attempts" in caplog.text
+
+
+def test_the_count_restarts_after_a_recovery(caplog):
+    service = FakeService(errors=[AgentConnectionError("down"), None, AgentConnectionError("down")])
+    poller = SnapshotPoller(service, agent_url="http://127.0.0.1:8080")
+
+    async def scenario():
+        for _ in range(3):
+            await poller.poll_once()
+
+    with caplog.at_level("WARNING"):
+        asyncio.run(scenario())
+
+    counts = [line.getMessage() for line in failure_lines(caplog)]
+    assert counts == [
+        "Snapshot poll from http://127.0.0.1:8080 failed (1 in a row): down",
+        "Snapshot poll from http://127.0.0.1:8080 failed (1 in a row): down",
+    ]

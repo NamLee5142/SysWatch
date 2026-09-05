@@ -35,7 +35,7 @@ def test_a_test_that_asks_for_no_client_runs_without_authentication(database):
     # The autouse bypass: a test about snapshots or alerts should not have to
     # know that authentication exists. The dependency still runs — it resolves
     # to the anonymous admin rather than being skipped.
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://testserver/api")
 
     body = client.get("/auth/me").json()
 

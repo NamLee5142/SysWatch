@@ -13,6 +13,10 @@ ENV_VARS = (
     "SYSWATCH_RETENTION_DAYS",
     "SYSWATCH_CORS_ORIGINS",
     "SYSWATCH_ALERTS_ENABLED",
+    "SYSWATCH_DATA_DIR",
+    "SYSWATCH_LOG_DIR",
+    "SYSWATCH_LOG_LEVEL",
+    "SYSWATCH_DEV_MODE",
 )
 
 
@@ -87,7 +91,11 @@ def test_get_settings_reads_environment_at_call_time(clean_env):
 def test_database_settings_use_documented_defaults(clean_env):
     settings = Settings()
 
-    assert settings.database_url == "sqlite:///./syswatch.db"
+    # Derived from the data directory rather than the working directory: a
+    # Windows Service starts in C:\Windows\System32.
+    assert settings.database_url.startswith("sqlite:///")
+    assert settings.database_url.endswith("/syswatch.db")
+    assert settings.data_dir in settings.log_dir
     assert settings.polling_enabled is True
     assert settings.poll_interval_seconds == 10.0
     assert settings.retention_days == 30

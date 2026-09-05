@@ -17,10 +17,26 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
 }
 
-# 'none' by default because a JSON API needs nothing: no scripts, no styles, no
-# images, no frames. The dashboard is served separately and needs a policy of
-# its own, which belongs with whatever serves it rather than here.
+# 'none' because a JSON API needs nothing: no scripts, no styles, no images, no
+# frames. Anything that can load a resource is a capability this surface has no
+# use for.
 API_CONTENT_SECURITY_POLICY = "default-src 'none'; frame-ancestors 'none'"
+
+# The dashboard is served from this process now, and 'none' would forbid it
+# loading its own bundle — the page renders blank with a console full of CSP
+# violations. Everything it needs comes from this origin, so 'self' is the whole
+# policy, minus one concession: 'unsafe-inline' for styles, because the chart
+# library sets them on elements it renders.
+DASHBOARD_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'none'; "
+    "form-action 'none'"
+)
 
 MIN_SESSION_SECRET_LENGTH = 32
 
@@ -53,7 +69,16 @@ class SecurityHeadersMiddleware:
                 for name, value in SECURITY_HEADERS.items():
                     headers.setdefault(name, value)
                 if path not in DOCUMENTATION_PATHS:
-                    headers.setdefault("Content-Security-Policy", API_CONTENT_SECURITY_POLICY)
+                    # Chosen by what is being sent rather than by path: the
+                    # same process answers JSON and serves an HTML application,
+                    # and they need opposite policies.
+                    content_type = headers.get("content-type", "")
+                    policy = (
+                        DASHBOARD_CONTENT_SECURITY_POLICY
+                        if content_type.startswith("text/html")
+                        else API_CONTENT_SECURITY_POLICY
+                    )
+                    headers.setdefault("Content-Security-Policy", policy)
 
             await send(message)
 
@@ -73,11 +98,34 @@ def verify_security_configuration(settings):
     warnings = []
 
     if not settings.auth_enabled:
+        if not settings.dev_mode:
+            # A warning was not enough. Anyone reading a startup log sees a
+            # hundred lines of normal, and this one says the whole API is open
+            # to anyone who can reach the port. Refusing to start is the only
+            # version of this message that cannot be scrolled past.
+            raise InsecureConfiguration(
+                "SYSWATCH_AUTH_ENABLED is false, which opens every endpoint and "
+                "treats every caller as an administrator. Set SYSWATCH_DEV_MODE=true "
+                "if this is a development machine; otherwise remove the setting."
+            )
+
         warnings.append(
             "SYSWATCH_AUTH_ENABLED is false: every endpoint is open and every "
             "caller is treated as an administrator."
         )
         return warnings
+
+    for origin in settings.cors_origins:
+        if not settings.dev_mode and not origin.startswith("https://"):
+            # Not pedantry: the session cookie carries Secure, so a browser on
+            # an http:// origin never sends it back. A dashboard configured
+            # this way logs in and stays logged out, and the symptom points
+            # nowhere near the cause.
+            raise InsecureConfiguration(
+                f"SYSWATCH_CORS_ORIGINS contains {origin!r}. The session cookie is "
+                "Secure, so a browser on an http:// origin will never send it — "
+                "use https://, or set SYSWATCH_DEV_MODE=true for local work."
+            )
 
     if settings.dev_mode:
         warnings.append(

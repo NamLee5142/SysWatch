@@ -15,10 +15,29 @@ def clean_env(monkeypatch):
 
 
 @pytest.fixture
-def client(clean_env):
+def configured_env(clean_env):
+    """Cross-origin access granted to the dev server, the way someone serving
+    the dashboard separately would have to grant it."""
+    clean_env.setenv("SYSWATCH_CORS_ORIGINS", f"{DASHBOARD_ORIGIN},http://127.0.0.1:5173")
+    return clean_env
+
+
+@pytest.fixture
+def client(configured_env):
     # Built per test rather than at import: create_app() reads the origins once,
     # so an app made before monkeypatch would carry the wrong ones.
-    return TestClient(create_app())
+    return TestClient(create_app(), base_url="http://testserver/api")
+
+
+def test_nothing_is_allowed_cross_origin_by_default(clean_env):
+    anywhere = TestClient(create_app(), base_url="http://testserver/api")
+
+    response = anywhere.get("/health", headers={"Origin": DASHBOARD_ORIGIN})
+
+    # The backend serves the dashboard itself and the dev proxy is same-origin,
+    # so neither deployment needs a grant. The one that does has to ask.
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
 
 
 def preflight(client, origin, method="GET"):
@@ -28,13 +47,13 @@ def preflight(client, origin, method="GET"):
     )
 
 
-def test_dashboard_origin_is_allowed_by_default(client):
+def test_a_configured_origin_is_allowed(client):
     response = client.get("/health", headers={"Origin": DASHBOARD_ORIGIN})
 
     assert response.headers["access-control-allow-origin"] == DASHBOARD_ORIGIN
 
 
-def test_loopback_spelling_of_the_dev_server_is_also_allowed(client):
+def test_every_configured_origin_is_allowed(client):
     origin = "http://127.0.0.1:5173"
 
     response = client.get("/health", headers={"Origin": origin})
@@ -152,7 +171,7 @@ def test_a_wildcard_among_real_origins_is_refused_too(clean_env):
 
 def test_origins_can_be_replaced_by_env(clean_env):
     clean_env.setenv("SYSWATCH_CORS_ORIGINS", "http://dash.internal")
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://testserver/api")
 
     allowed = client.get("/health", headers={"Origin": "http://dash.internal"})
     default = client.get("/health", headers={"Origin": DASHBOARD_ORIGIN})

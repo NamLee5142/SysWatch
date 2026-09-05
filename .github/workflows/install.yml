@@ -1,0 +1,142 @@
+name: Install
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Install, upgrade, uninstall
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Ninja
+        run: choco install ninja --no-progress --yes
+
+      - name: Build the agent
+        run: |
+          cmake -S agent -B agent/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build agent/build
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Build the dashboard
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run build
+
+      # Before the installer: it decides whether the backend can be a service
+      # while it runs, so installing nssm afterwards would be too late.
+      - name: Install nssm
+        run: choco install nssm --no-progress --yes
+
+      - name: Install SysWatch
+        run: .\deploy\Install-SysWatch.ps1 -SkipAdminAccount
+
+      - name: Assert both services are running
+        shell: pwsh
+        run: |
+          foreach ($name in 'SysWatchAgent', 'SysWatchBackend') {
+            $deadline = (Get-Date).AddSeconds(30)
+            do {
+              $service = Get-Service -Name $name -ErrorAction SilentlyContinue
+              if ($service.Status -eq 'Running') { break }
+              Start-Sleep -Seconds 2
+            } while ((Get-Date) -lt $deadline)
+
+            if ($service.Status -ne 'Running') {
+              throw "$name is '$($service.Status)', expected Running"
+            }
+            "$name is running"
+          }
+
+      - name: Assert the backend answers
+        shell: pwsh
+        run: |
+          $deadline = (Get-Date).AddSeconds(30)
+          do {
+            try { $health = Invoke-RestMethod http://127.0.0.1:8000/api/health; break } catch { Start-Sleep -Seconds 2 }
+          } while ((Get-Date) -lt $deadline)
+
+          if ($health.version -ne (Get-Content VERSION).Trim()) {
+            throw "health reported '$($health.version)'"
+          }
+          "health: $($health | ConvertTo-Json -Compress)"
+
+      - name: Remember the session secret
+        shell: pwsh
+        run: |
+          $line = Select-String -Path C:\ProgramData\SysWatch\syswatch.env -Pattern '^SYSWATCH_SESSION_SECRET=(.+)$'
+          $secret = $line.Matches[0].Groups[1].Value
+          "secret=$secret" >> $env:GITHUB_ENV
+
+      - name: Upgrade over the existing install
+        run: .\deploy\Install-SysWatch.ps1 -SkipAdminAccount
+
+      - name: Assert the upgrade kept the secret and the services
+        shell: pwsh
+        run: |
+          $line = Select-String -Path C:\ProgramData\SysWatch\syswatch.env -Pattern '^SYSWATCH_SESSION_SECRET=(.+)$'
+          $now = $line.Matches[0].Groups[1].Value
+
+          if ($now -cne $env:secret) {
+            throw "the upgrade regenerated the session secret, signing every user out"
+          }
+          "session secret survived the upgrade"
+
+          foreach ($name in 'SysWatchAgent', 'SysWatchBackend') {
+            $deadline = (Get-Date).AddSeconds(30)
+            do {
+              $service = Get-Service -Name $name -ErrorAction SilentlyContinue
+              if ($service.Status -eq 'Running') { break }
+              Start-Sleep -Seconds 2
+            } while ((Get-Date) -lt $deadline)
+            if ($service.Status -ne 'Running') { throw "$name is '$($service.Status)' after the upgrade" }
+          }
+
+      - name: Uninstall, keeping the data
+        run: .\deploy\Uninstall-SysWatch.ps1
+
+      - name: Assert the services are gone and the data is not
+        shell: pwsh
+        run: |
+          foreach ($name in 'SysWatchAgent', 'SysWatchBackend') {
+            if (Get-Service -Name $name -ErrorAction SilentlyContinue) { throw "$name is still registered" }
+          }
+          if (Test-Path 'C:\Program Files\SysWatch') { throw "the install directory is still there" }
+          if (-not (Test-Path C:\ProgramData\SysWatch\syswatch.db)) {
+            throw "the database was deleted by an uninstall that was not asked to"
+          }
+          "services removed, data kept"
+
+      - name: Uninstall again, this time removing the data
+        run: .\deploy\Uninstall-SysWatch.ps1 -RemoveData -Force
+
+      - name: Assert the data is gone
+        shell: pwsh
+        run: |
+          if (Test-Path C:\ProgramData\SysWatch) { throw "the data directory survived -RemoveData" }
+          "data directory removed"
+
+      # Last, deliberately. `if: failure()` only looks backwards: a step in the
+      # middle is skipped on a clean run and never reconsidered, so a failure
+      # in the upgrade or uninstall half would have printed nothing at all.
+      - name: Show the logs when something failed
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem C:\ProgramData\SysWatch\logs -ErrorAction SilentlyContinue
+          foreach ($log in 'syswatch.log', 'agent.log', 'backend-stderr.log') {
+            $path = "C:\ProgramData\SysWatch\logs\$log"
+            if (Test-Path $path) { "--- $log ---"; Get-Content $path -Tail 40 }
+          }

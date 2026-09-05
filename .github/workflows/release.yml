@@ -1,0 +1,149 @@
+name: Release
+
+# A v* tag builds everything from that commit and attaches one archive to a
+# GitHub Release. It rebuilds rather than collecting artifacts from earlier
+# workflow runs: a release should be reproducible from the tag alone, and
+# reaching across workflow runs for binaries makes the provenance of what
+# shipped depend on retention settings.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build, for a dry run. No release is created."
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+
+    permissions:
+      # Only this job, and only to create the release.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # A tag that disagrees with VERSION produces a release whose contents
+      # report a different version from its name - and /api/health would then
+      # contradict the download it came from. Cheaper to stop here.
+      - name: Check the tag matches VERSION
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          tag="${GITHUB_REF_NAME}"
+          echo "VERSION=$version  tag=$tag"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "v$version" != "$tag" ]; then
+            echo "::error::Tag $tag does not match VERSION ($version). Bump VERSION and run scripts/sync_version.py, or retag."
+            exit 1
+          fi
+
+      - name: Install Ninja
+        run: choco install ninja --no-progress --yes
+
+      - name: Build the agent
+        run: |
+          cmake -S agent -B agent/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build agent/build
+
+      # The same check the agent workflow runs. A release binary that imports
+      # libstdc++-6.dll would install, register, start and die with no message.
+      - name: Check the agent has no MinGW runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          objdump -p agent/build/agent.exe | grep -i "DLL Name:" | sort -u
+          if objdump -p agent/build/agent.exe | grep -qiE "DLL Name: *(libstdc\+\+|libgcc_s|libwinpthread)"; then
+            echo "::error::agent.exe links a MinGW runtime DLL."
+            exit 1
+          fi
+
+      - name: Test the agent
+        working-directory: agent/build
+        run: ctest --output-on-failure
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Build the dashboard
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run build
+
+      # Laid out exactly as Install-SysWatch.ps1 expects to find a source tree,
+      # so the archive is not a bag of files to be assembled by hand: unzip it
+      # and run deploy\Install-SysWatch.ps1. Anything else and the installer
+      # that was tested against a checkout is not the one operators run.
+      - name: Assemble the package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          out="dist/SysWatch-$version"
+          mkdir -p "$out/agent/build" "$out/dashboard"
+          cp agent/build/agent.exe "$out/agent/build/"
+          cp -r dashboard/dist "$out/dashboard/dist"
+          cp -r deploy "$out/deploy"
+          cp VERSION "$out/VERSION"
+          # The backend as it is deployed: no tests, no virtualenv, no caches.
+          # Matches what the installer copies, so the archive does not carry
+          # what an install would throw away. conftest.py goes too - it is
+          # fixtures for tests that are not here.
+          mkdir -p "$out/backend"
+          (cd backend && tar --exclude=tests --exclude=conftest.py --exclude=.venv \
+              --exclude=__pycache__ --exclude=.pytest_cache --exclude=data -cf - .) \
+              | (cd "$out/backend" && tar -xf -)
+          cp README.md LICENSE "$out/" 2>/dev/null || true
+          find "$out" -maxdepth 2 -mindepth 1 | sort
+
+      - name: Archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          (cd dist && 7z a -tzip "SysWatch-$version.zip" "SysWatch-$version" >/dev/null)
+          ls -la dist/*.zip
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: syswatch-package
+          path: dist/*.zip
+          retention-days: 14
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(tr -d '[:space:]' < VERSION)
+          gh release create "${GITHUB_REF_NAME}" "dist/SysWatch-$version.zip" \
+            --title "SysWatch $version" \
+            --generate-notes \
+            --notes-file - <<NOTES
+          ## Install
+
+          Unzip, then from an elevated PowerShell prompt:
+
+              .\deploy\Install-SysWatch.ps1
+
+          Upgrading an existing install is the same command. It keeps the
+          session secret, so nobody is signed out, and backs up the database
+          before migrating.
+
+          Needs Python 3.10 or newer on PATH. The backend is registered as a
+          service only when nssm is installed; otherwise the installer prints
+          the commands to run.
+          NOTES

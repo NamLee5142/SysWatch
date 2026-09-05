@@ -45,7 +45,7 @@ def client():
     # https, because outside dev_mode the session cookie carries Secure and a
     # browser — or httpx's cookie jar — will not send it back over plain HTTP.
     # Testing over http would quietly exercise a no-cookie path instead.
-    return TestClient(create_app(), base_url="https://testserver")
+    return TestClient(create_app(), base_url="https://testserver/api")
 
 
 def make_user(username="admin", password=PASSWORD, role="admin", enabled=True):
@@ -99,7 +99,7 @@ def test_the_session_cookie_is_httponly_secure_and_lax(client):
 
 def test_the_cookie_drops_its_secure_flag_in_dev_mode(monkeypatch):
     monkeypatch.setenv("SYSWATCH_DEV_MODE", "true")
-    client = TestClient(create_app())
+    client = TestClient(create_app(), base_url="http://testserver/api")
     make_user()
 
     header = login(client).headers["set-cookie"]

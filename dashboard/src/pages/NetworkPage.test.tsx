@@ -78,9 +78,21 @@ describe('NetworkPage', () => {
     render(<NetworkPage />)
 
     await waitFor(() => expect(screen.getByText('Wi-Fi')).toBeInTheDocument())
+
     // A received and a sent rate, formatted by formatBytesPerSec (its exact
     // output is covered in format.test.ts).
-    expect(screen.getAllByText((text) => text.endsWith('KB/s'))).toHaveLength(2)
+    //
+    // Restricted to <dd>, because the card is not the only thing on this page
+    // formatting bytes per second: MetricChart passes formatBytesPerSec as its
+    // axis tick formatter, so every rendered tick is text ending in KB/s too.
+    // How many ticks a chart renders depends on the sizes it measures, which
+    // jsdom does not decide identically everywhere - unrestricted, this
+    // matched two here and five on a Linux runner.
+    const rates = screen.getAllByText(
+      (text, element) => element?.tagName === 'DD' && text.endsWith('KB/s'),
+    )
+
+    expect(rates).toHaveLength(2)
   })
 
   it('requests both the net_recv and net_sent metrics', async () => {

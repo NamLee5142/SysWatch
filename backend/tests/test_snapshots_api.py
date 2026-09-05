@@ -12,7 +12,7 @@ from app.repositories import SnapshotStore
 BASE_TIME = datetime(2026, 8, 12, 11, 15, 27, tzinfo=timezone.utc)
 
 app = create_app()
-client = TestClient(app)
+client = TestClient(app, base_url="http://testserver/api")
 
 
 @pytest.fixture(autouse=True)

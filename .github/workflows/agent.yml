@@ -1,0 +1,106 @@
+name: Agent
+
+# The agent is Win32 - Service Control Manager, PDH, iphlpapi, psapi - so a
+# Linux runner cannot build it, let alone run its tests.
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "agent/**"
+      - "VERSION"
+      - ".github/workflows/agent.yml"
+
+  # No paths filter here, deliberately, though the push trigger above has one.
+  #
+  # A required status check that never runs is not skipped - it stays pending,
+  # and blocks the merge for good. A documentation-only pull request would be
+  # unmergeable the moment these become required checks. Running all three on
+  # every pull request costs a few minutes and makes branch protection mean
+  # what it says.
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Ninja
+        run: choco install ninja --no-progress --yes
+
+      # Printed before anything is built, because the most likely way this job
+      # breaks is a runner image changing what it ships. A version table in the
+      # log answers "what changed" without a bisect.
+      - name: Toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gcc --version | head -1
+          g++ --version | head -1
+          cmake --version | head -1
+          ninja --version
+
+      # gcc and g++ explicitly. Left to choose, CMake would take whichever
+      # compiler the runner happens to favour, and MSVC would silently skip the
+      # -static link options below - producing a binary that passes CI and
+      # cannot run as a service.
+      - name: Configure
+        run: >
+          cmake -S agent -B agent/build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER=gcc
+          -DCMAKE_CXX_COMPILER=g++
+
+      - name: Build
+        run: cmake --build agent/build
+
+      # The agent runs as a service under LocalSystem, with no console and no
+      # inherited PATH. It once imported libstdc++-6.dll, libgcc_s_seh-1.dll
+      # and libwinpthread-1.dll from whatever was on PATH, which made it exit
+      # 127 with no message anywhere - registered, started, and dead. Nothing
+      # in a compile or a test catches that, so it is checked directly.
+      - name: Check the agent has no MinGW runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          objdump -p agent/build/agent.exe | grep -i "DLL Name:" | sort -u
+          if objdump -p agent/build/agent.exe | grep -qiE "DLL Name: *(libstdc\+\+|libgcc_s|libwinpthread)"; then
+            echo "::error::agent.exe links a MinGW runtime DLL; it will exit 127 as a service."
+            exit 1
+          fi
+
+      - name: Test
+        working-directory: agent/build
+        run: ctest --output-on-failure
+
+      # Statically linked, so this one file is the whole agent - which is what
+      # makes it worth keeping from a run that is not a release.
+      - uses: actions/upload-artifact@v6
+        with:
+          name: agent
+          path: agent/build/agent.exe
+          retention-days: 14
+
+      # A test that silently stops being registered still reports success, and
+      # the suite would shrink without anybody noticing.
+      - name: Check every test source is registered with CTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          sources=$(ls agent/tests/*.cpp | wc -l)
+          registered=$(cd agent/build && ctest -N | sed -n 's/^Total Tests: *//p')
+          echo "test sources: $sources, registered with ctest: $registered"
+          if [ "$sources" -ne "$registered" ]; then
+            echo "::error::$sources test sources but $registered registered. Add it with add_agent_test in agent/CMakeLists.txt."
+            exit 1
+          fi
