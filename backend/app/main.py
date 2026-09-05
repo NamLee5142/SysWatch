@@ -209,4 +209,30 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+_app = None
+
+
+def __getattr__(name):
+    """Build the application when `app` is asked for, not when this is imported.
+
+    `uvicorn app.main:app` is a documented way to run this, so the attribute
+    has to exist - but constructing it at import meant that importing anything
+    from this module configured logging and read the config file as a side
+    effect.
+
+    On a machine with SysWatch installed that is fatal rather than untidy:
+    syswatch.env is readable by Administrators and SYSTEM only, so `import
+    app.main` from an ordinary prompt raised PermissionError. The test suite
+    imports create_app in conftest, so `pytest` stopped working on any
+    developer machine that had installed the thing it was testing - and no
+    fixture could prevent it, because the read happened before fixtures exist.
+    """
+    global _app
+
+    if name != "app":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    if _app is None:
+        _app = create_app()
+
+    return _app

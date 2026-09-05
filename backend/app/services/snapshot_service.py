@@ -4,14 +4,14 @@ from typing import Optional
 from app.client import AgentClient
 from app.models.snapshot import Snapshot
 from app.repositories import SnapshotStore
-from config import settings
+from config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
 class SnapshotService:
     def __init__(self, client: Optional[AgentClient] = None, store: Optional[SnapshotStore] = None):
-        self.client = client or AgentClient(settings.agent_base_url)
+        self.client = client or AgentClient(get_settings().agent_base_url)
         self.store = store
 
     def get_snapshot(self) -> Snapshot:

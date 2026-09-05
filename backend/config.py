@@ -174,4 +174,13 @@ def get_settings() -> Settings:
     return Settings(_env_file=config_file_path())
 
 
-settings = get_settings()
+# No module-level `settings = get_settings()`.
+#
+# It read the config file at import, which is exactly what the docstring above
+# says this design avoids. The consequence showed up on a machine with SysWatch
+# installed: syswatch.env is readable by Administrators and SYSTEM only, so
+# importing anything that reaches config.py from an ordinary prompt raised
+# PermissionError - `pytest` included, on the developer's own machine, with no
+# way for a fixture to intervene because the read happened at import.
+#
+# Callers ask for settings when they need them.

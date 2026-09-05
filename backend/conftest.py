@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -6,6 +7,16 @@ import pytest
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# Before importing anything that reads settings.
+#
+# The installer sets SYSWATCH_CONFIG_FILE for the machine, and points it at a
+# file readable by Administrators and SYSTEM only. Any test module that builds
+# an app at import - several do - would then read it, and on a developer
+# machine with SysWatch installed the whole suite died with PermissionError
+# during collection. The autouse fixture below says the same thing, but a
+# fixture cannot run before the module it protects is imported.
+os.environ["SYSWATCH_CONFIG_FILE"] = str(ROOT / "no-such-config.env")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
