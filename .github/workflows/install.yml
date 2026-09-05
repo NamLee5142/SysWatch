@@ -1,0 +1,39 @@
+name: Install
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Install, upgrade, uninstall
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Ninja
+        run: choco install ninja --no-progress --yes
+
+      - name: Build the agent
+        run: |
+          cmake -S agent -B agent/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build agent/build
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Build the dashboard
+        working-directory: dashboard
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install SysWatch
+        run: .\deploy\Install-SysWatch.ps1 -SkipAdminAccount
