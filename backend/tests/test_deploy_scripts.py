@@ -16,6 +16,7 @@ SCRIPTS = sorted(DEPLOY.glob("*.ps1"))
 
 def test_there_are_deployment_scripts():
     assert [path.name for path in SCRIPTS] == [
+        "Install-Prerequisites.ps1",
         "Install-SysWatch.ps1",
         "Uninstall-SysWatch.ps1",
     ]
@@ -129,3 +130,64 @@ def test_the_backend_service_is_launched_with_a_path_that_has_no_space():
         stripped = line.strip()
         if "AppParameters" in stripped and "$serveScript" in stripped:
             pytest.fail(f"AppParameters gets an absolute path: {stripped}")
+
+
+def test_the_prerequisites_script_changes_nothing_by_default():
+    """Reporting is safe; installing a system runtime is a decision."""
+    prerequisites = (DEPLOY / "Install-Prerequisites.ps1").read_text(encoding="utf-8")
+
+    assert "[switch]$Install" in prerequisites
+    assert "if (-not $Install.IsPresent) {" in prerequisites
+
+
+def test_installing_a_prerequisite_is_offered_and_never_assumed():
+    """The installer may offer, but the default answer is no.
+
+    Installing a system-wide language runtime changes machine PATH and can
+    collide with an interpreter already in use, so it is a question rather
+    than a side effect - and -InstallPrerequisites is how an unattended run
+    answers it in advance.
+    """
+    installer = (DEPLOY / "Install-SysWatch.ps1").read_text(encoding="utf-8")
+
+    assert "[switch]$InstallPrerequisites" in installer
+    assert "if ($InstallPrerequisites.IsPresent) { return $true }" in installer
+    assert 'Read-Host "    Install it? [y/N]"' in installer
+
+
+def test_the_prompt_is_skipped_when_nobody_is_at_the_keyboard():
+    """A prompt in a deployment pipeline is a hang, not a question."""
+    installer = (DEPLOY / "Install-SysWatch.ps1").read_text(encoding="utf-8")
+
+    assert "if (-not [Environment]::UserInteractive) { return $false }" in installer
+    assert "if ([Console]::IsInputRedirected) { return $false }" in installer
+
+
+def test_a_newly_installed_prerequisite_is_looked_for_again():
+    """A process keeps the environment it was launched with.
+
+    winget writes the new PATH entry to the registry, so without re-reading it
+    the installer would install Python and then still not find it.
+    """
+    installer = (DEPLOY / "Install-SysWatch.ps1").read_text(encoding="utf-8")
+
+    assert "function Update-PathFromRegistry" in installer
+    assert "[Environment]::GetEnvironmentVariable('PATH', 'Machine')" in installer
+
+    # And the refresh is followed by looking again, not just called and
+    # forgotten - refreshing PATH without re-checking would change nothing.
+    stripped = [line.strip() for line in installer.splitlines()]
+    refresh = stripped.index("Update-PathFromRegistry")
+    assert "Get-PythonCommand" in stripped[refresh + 1]
+
+
+def test_prerequisites_are_installed_for_the_machine_not_the_user():
+    """A per-user install is invisible to LocalSystem.
+
+    Both services run as LocalSystem. Python installed only for the operator
+    would satisfy the installer's check and then not exist for the service
+    that has to run it.
+    """
+    text = (DEPLOY / "Install-Prerequisites.ps1").read_text(encoding="utf-8")
+
+    assert "'--scope', 'machine'" in text

@@ -54,6 +54,10 @@ For a Windows machine, from an elevated prompt:
 powershell -ExecutionPolicy Bypass -File deploy\Install-SysWatch.ps1
 ```
 
+If Python is missing it offers to install it and defaults to no.
+`deploy\Install-Prerequisites.ps1` reports what the machine needs without
+installing anything, and covers the build tools too.
+
 It installs the agent as a service, sets up the backend and the dashboard,
 migrates the database and prompts for the first account. Running it again over
 an existing install upgrades in place: it backs up the database first and keeps

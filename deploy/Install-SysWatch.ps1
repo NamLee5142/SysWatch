@@ -39,6 +39,11 @@
     every login until one exists; create it with:
         python -m app.auth.create_admin
 
+.PARAMETER InstallPrerequisites
+    Install a missing prerequisite without asking. Without it, an interactive
+    run offers to install and defaults to no, and an unattended run refuses
+    and says what is missing.
+
 .EXAMPLE
     .\Install-SysWatch.ps1
 
@@ -52,7 +57,8 @@ param(
     [int]$Port = 8000,
     [string]$SourceRoot,
     [switch]$SkipServices,
-    [switch]$SkipAdminAccount
+    [switch]$SkipAdminAccount,
+    [switch]$InstallPrerequisites
 )
 
 $ErrorActionPreference = 'Stop'
@@ -125,6 +131,43 @@ function Get-PythonCommand {
     }
 
     return $null
+}
+
+function Update-PathFromRegistry {
+    <#
+        Adopt a PATH that changed after this process started.
+
+        winget writes the new entry to the registry, and a running process
+        keeps the environment block it was given at launch - so without this,
+        the installer would install Python and then still not find it.
+    #>
+    $machine = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+    $user = [Environment]::GetEnvironmentVariable('PATH', 'User')
+    $env:PATH = @($machine, $user) -ne $null -join ';'
+}
+
+function Approve-PrerequisiteInstall {
+    <#
+        Whether to install a missing prerequisite.
+
+        Asked, not assumed. Installing a system-wide language runtime changes
+        machine PATH and can collide with an interpreter already in use, so it
+        defaults to no and is skipped entirely when nobody is at the keyboard -
+        a prompt in a deployment pipeline is a hang, not a question.
+    #>
+    param([string]$What)
+
+    if ($InstallPrerequisites.IsPresent) { return $true }
+    if (-not [Environment]::UserInteractive) { return $false }
+    if ([Console]::IsInputRedirected) { return $false }
+
+    Write-Host ""
+    Write-Host "    $What is missing." -ForegroundColor Yellow
+    Write-Host "    It can be installed now with winget, for the whole machine."
+    Write-Host "    A per-user install would not be visible to the services, which run as LocalSystem."
+    $answer = Read-Host "    Install it? [y/N]"
+
+    return $answer -match '^\s*(y|yes)\s*$'
 }
 
 function New-SessionSecret {
@@ -305,16 +348,43 @@ if (-not (Test-Path -LiteralPath (Join-Path $backendSource 'serve.py'))) {
 }
 
 $python = Get-PythonCommand
+
+if (-not $python -and (Test-Administrator)) {
+    # Offered here rather than left to a second script the operator has to know
+    # about. Install-Prerequisites.ps1 is still what does the work - this asks,
+    # and calls it.
+    $prerequisites = Join-Path $PSScriptRoot 'Install-Prerequisites.ps1'
+
+    if ((Test-Path -LiteralPath $prerequisites) -and (Approve-PrerequisiteInstall "Python $MinimumPython or newer")) {
+        try {
+            & $prerequisites -Install
+            Update-PathFromRegistry
+            $python = Get-PythonCommand
+
+            if ($python) {
+                Write-Detail "Python $($python.Version) is now available."
+            } else {
+                # winget can report success while the interpreter lands
+                # somewhere this process still cannot see.
+                Write-Warn "Python was installed but is not on PATH yet. Open a new prompt and re-run this."
+            }
+        } catch {
+            Write-Warn "Could not install Python: $($_.Exception.Message)"
+        }
+    }
+}
+
 if (-not $python) {
     # The one prerequisite a clean machine will not have, and the message an
     # operator meets first. "Not found" on its own leaves them to guess whether
     # the problem is the version, the PATH, or the Store alias.
     $problems += (
-        "No Python $MinimumPython or newer on PATH. Install it with " +
-        "'winget install Python.Python.3.13' or from python.org, ticking " +
-        "'Add python.exe to PATH', then open a new prompt and re-run this. " +
-        "If 'python' opens the Microsoft Store instead of running, turn off " +
-        "the App Execution Alias for it in Settings."
+        "No Python $MinimumPython or newer on PATH. Re-run this from an " +
+        "elevated prompt and it will offer to install one, or pass " +
+        "-InstallPrerequisites to skip the question. To see everything this " +
+        "machine is missing first: .\Install-Prerequisites.ps1. If 'python' " +
+        "opens the Microsoft Store instead of running, turn off the App " +
+        "Execution Alias for it in Settings."
     )
 }
 

@@ -31,6 +31,26 @@ second. Monitoring history outlives the software that collected it.
 - An administrator prompt, for registering services
 - `nssm`, optionally - see [The backend as a service](#the-backend-as-a-service)
 
+**The installer offers to install Python if it is missing**, from an elevated
+prompt, and defaults to no. Answer yes and it installs it machine-wide with
+winget, re-reads PATH and carries on in the same run - a per-user install would
+satisfy the check and then not exist for the services, which run as LocalSystem.
+
+`-InstallPrerequisites` answers yes in advance, for unattended installs. When
+nobody is at the keyboard the question is skipped entirely rather than asked
+into a pipeline that cannot answer it, and the install refuses with a message
+saying what is missing.
+
+To see what the machine needs without running the installer at all:
+
+```text
+powershell -ExecutionPolicy Bypass -File deploy\Install-Prerequisites.ps1
+```
+
+That reports and changes nothing. `-Install` installs what it found, and
+`-IncludeBuildTools` also covers the compiler, CMake, Ninja and Node needed to
+build from source.
+
 Build the agent and the dashboard first, or use a release archive, which
 contains both already built:
 
