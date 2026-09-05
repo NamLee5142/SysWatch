@@ -73,16 +73,6 @@ jobs:
           }
           "health: $($health | ConvertTo-Json -Compress)"
 
-      - name: Show the logs when something failed
-        if: failure()
-        shell: pwsh
-        run: |
-          Get-ChildItem C:\ProgramData\SysWatch\logs -ErrorAction SilentlyContinue
-          foreach ($log in 'syswatch.log', 'agent.log', 'backend-stderr.log') {
-            $path = "C:\ProgramData\SysWatch\logs\$log"
-            if (Test-Path $path) { "--- $log ---"; Get-Content $path -Tail 40 }
-          }
-
       - name: Remember the session secret
         shell: pwsh
         run: |
@@ -137,3 +127,16 @@ jobs:
         run: |
           if (Test-Path C:\ProgramData\SysWatch) { throw "the data directory survived -RemoveData" }
           "data directory removed"
+
+      # Last, deliberately. `if: failure()` only looks backwards: a step in the
+      # middle is skipped on a clean run and never reconsidered, so a failure
+      # in the upgrade or uninstall half would have printed nothing at all.
+      - name: Show the logs when something failed
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem C:\ProgramData\SysWatch\logs -ErrorAction SilentlyContinue
+          foreach ($log in 'syswatch.log', 'agent.log', 'backend-stderr.log') {
+            $path = "C:\ProgramData\SysWatch\logs\$log"
+            if (Test-Path $path) { "--- $log ---"; Get-Content $path -Tail 40 }
+          }
