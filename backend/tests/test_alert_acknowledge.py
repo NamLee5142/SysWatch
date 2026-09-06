@@ -158,3 +158,62 @@ def test_the_model_carries_the_fields_from_the_record(firing_alert):
 
     assert model.acknowledgedBy == "sam"
     assert model.acknowledgedAt == AT
+
+
+@pytest.fixture
+def file_backed_database(tmp_path):
+    """A database several threads can use at once.
+
+    The suite's default is in-memory, which SQLAlchemy backs with a StaticPool:
+    one connection shared by every session, because each connection to
+    ":memory:" would otherwise get a private database. Threads contending on
+    one connection produce "bad parameter or other API misuse", which is a
+    property of the fixture and not of anything that ships.
+    """
+    from app.db import session as db_session
+    from app.db.models import Base
+
+    db_session.dispose_engine()
+    engine = db_session.init_engine(
+        f"sqlite:///{(tmp_path / 'contention.db').as_posix()}"
+    )
+    Base.metadata.create_all(engine)
+
+    yield
+
+    db_session.dispose_engine()
+
+
+def test_the_first_acknowledgement_wins_even_under_contention(file_backed_database):
+    """The claim in acknowledge()'s docstring, made true by SQL rather than luck.
+
+    Checking in Python and then writing is a read-modify-write: two callers
+    both see NULL, both write, and the later one wins - the opposite of what
+    the method promises. The WHERE clause makes the second update match no
+    rows.
+    """
+    import threading
+
+    rule = AlertRuleStore().create(
+        AlertRuleCreate(name="CPU usage high", metric="cpu", operator="gt", threshold=80.0)
+    )
+    alert = AlertStore().open_new(rule=rule, host_name="devbox", value=91.5, at=AT)
+
+    store = AlertStore()
+    told = []
+    start = threading.Barrier(6)
+
+    def acknowledge(who):
+        start.wait()
+        told.append(store.acknowledge(alert_id=alert.id, username=who))
+
+    threads = [threading.Thread(target=acknowledge, args=(f"user{n}",)) for n in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    # Every caller was told the same thing, and it is what the row says.
+    names = {alert.acknowledged_by for alert in told}
+    assert len(names) == 1
+    assert names.pop() == store.get(alert.id).acknowledged_by

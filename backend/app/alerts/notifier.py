@@ -32,6 +32,16 @@ class Notifier:
     wired explicitly where the engine is built.
     """
 
+    @property
+    def name(self):
+        """What to call this in a log line about a failure.
+
+        A wrapper delegates, so an operator reading "could not deliver through
+        SeverityFilter" instead of "through SmtpNotifier" - which is what they
+        got before this existed - learns which transport is actually down.
+        """
+        return type(self).__name__
+
     def deliver(self, change, alert):
         """Send one state change. `change` is OPENED or RESOLVED."""
         raise NotImplementedError
@@ -90,7 +100,7 @@ class CompositeNotifier(Notifier):
             except Exception:
                 logger.warning(
                     "Could not deliver an alert through %s",
-                    type(notifier).__name__,
+                    notifier.name,
                     exc_info=True,
                 )
 
@@ -120,6 +130,11 @@ class SeverityFilter(Notifier):
     def __init__(self, notifier, minimum):
         self._notifier = notifier
         self._minimum = SEVERITY_ORDER[minimum]
+
+    @property
+    def name(self):
+        # The transport, not this wrapper. A filter never fails.
+        return self._notifier.name
 
     def __repr__(self):
         return f"SeverityFilter({self._notifier!r})"

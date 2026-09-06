@@ -217,18 +217,19 @@ class AlertStore:
         acknowledgement answers is who picked it up, and that is whoever got
         there first.
         """
-        record = self.get(alert_id)
-
-        if record is None:
+        if self.get(alert_id) is None:
             return None
-
-        if record.acknowledged_at is not None:
-            return record
 
         stored_at = to_storage_time(at or datetime.now(timezone.utc))
         statement = (
             update(AlertRecord)
             .where(AlertRecord.id == alert_id)
+            # Only if nobody has. Checking in Python first and then writing is
+            # a read-modify-write: two callers acknowledging at once both see
+            # NULL, both write, and the later one wins - which is the opposite
+            # of what this method promises. Letting the database decide makes
+            # the second update match no rows.
+            .where(AlertRecord.acknowledged_at.is_(None))
             .values(acknowledged_at=stored_at, acknowledged_by=username)
         )
 

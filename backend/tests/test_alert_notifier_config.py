@@ -196,3 +196,24 @@ def test_the_filter_does_not_reveal_what_it_wraps():
     printed = repr(built)
     assert "s3cret" not in printed
     assert "T0K3N" not in printed
+
+
+def test_a_failure_names_the_transport_not_the_wrapper(caplog):
+    """"Could not deliver through SeverityFilter" tells an operator nothing.
+
+    The log line is what gets grepped and what reaches a monitoring dashboard;
+    the traceback below it is not.
+    """
+    from app.alerts.notifier import CompositeNotifier
+
+    class Mail(Notifier):
+        def deliver(self, change, alert):
+            raise RuntimeError("down")
+
+    composite = CompositeNotifier([SeverityFilter(Mail(), "info")])
+
+    with caplog.at_level(logging.WARNING, logger="app.alerts.notifier"):
+        composite.deliver(OPENED, an_alert())
+
+    assert "through Mail" in caplog.text
+    assert "SeverityFilter" not in caplog.text
