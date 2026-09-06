@@ -106,6 +106,11 @@ the common case and the one that works with no configuration at all.
 Nothing in this sprint implements it. The point is that Sprint 12 starts from a
 decision rather than an argument.
 
+Written up, with the alternatives that lost and the questions still open, in
+[decisions/0001-agents-push-to-the-backend.md](decisions/0001-agents-push-to-the-backend.md).
+This section is the argument; that file is the decision, and it is the one to
+keep reading.
+
 ## Configuration after this sprint
 
 | Variable | Default | Purpose |

@@ -324,7 +324,10 @@ SysWatch serves plain HTTP on loopback. That is deliberate and it is not the
 whole story:
 
 - The agent binds `127.0.0.1` only and has no authentication. It is reachable
-  from the machine it monitors and nowhere else. This is not configurable.
+  from the machine it monitors and nowhere else. This is not configurable, and
+  monitoring a second machine will not change it - see
+  [decisions/0001](decisions/0001-agents-push-to-the-backend.md), which settles
+  that agents will push to the backend rather than be polled across a network.
 - The backend binds `127.0.0.1` by default. Session cookies carry `Secure`
   outside dev mode, so a browser will only return them over HTTPS or to
   localhost.
