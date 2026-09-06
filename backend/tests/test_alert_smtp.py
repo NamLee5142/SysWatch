@@ -81,6 +81,16 @@ def an_alert(store=None, **overrides):
     )
 
 
+def transports_of(built):
+    """The transports inside a built notifier, past the severity filters."""
+    from app.alerts.notifier import SeverityFilter
+
+    return [
+        n._notifier if isinstance(n, SeverityFilter) else n
+        for n in built._notifiers
+    ]
+
+
 def assert_module_cannot_log(module_name):
     """The file that holds a secret must contain nothing that can write a log.
 
@@ -280,7 +290,7 @@ def test_no_smtp_host_means_no_mail(monkeypatch):
 
     built = build_notifier(Settings())
 
-    assert not any(isinstance(n, SmtpNotifier) for n in built._notifiers)
+    assert not any(isinstance(n, SmtpNotifier) for n in transports_of(built))
 
 
 def test_a_configured_host_adds_the_transport():
@@ -290,10 +300,14 @@ def test_a_configured_host_adds_the_transport():
     from app.alerts.smtp import SmtpNotifier
 
     built = build_notifier(
-        Settings(smtp_host="smtp.example.test", smtp_to=["ops@example.test"])
+        Settings(
+            smtp_host="smtp.example.test",
+            smtp_from="syswatch@example.test",
+            smtp_to=["ops@example.test"],
+        )
     )
 
-    assert any(isinstance(n, SmtpNotifier) for n in built._notifiers)
+    assert any(isinstance(n, SmtpNotifier) for n in transports_of(built))
 
 
 def test_the_log_notifier_is_always_there():

@@ -95,6 +95,100 @@ class CompositeNotifier(Notifier):
                 )
 
 
+class NotificationMisconfigured(Exception):
+    """Configuration that would deliver nothing, or deliver it nowhere."""
+
+
+# Ordered, because "at least this severity" needs an order and a Literal has
+# none. The names match app.alerts.evaluator.Severity.
+SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
+
+
+class SeverityFilter(Notifier):
+    """Pass through only alerts at or above a severity.
+
+    Wraps a transport rather than sitting in the engine, so the log notifier is
+    unaffected: an operator who does not want to be mailed about warnings still
+    wants warnings in the record. Filtering in the engine would lose them
+    everywhere at once.
+
+    The filter reads the alert's severity for both openings and resolutions. A
+    resolution that got through while its opening did not would be a message
+    about an incident the reader was never told had started.
+    """
+
+    def __init__(self, notifier, minimum):
+        self._notifier = notifier
+        self._minimum = SEVERITY_ORDER[minimum]
+
+    def __repr__(self):
+        return f"SeverityFilter({self._notifier!r})"
+
+    def deliver(self, change, alert):
+        if SEVERITY_ORDER.get(alert.severity, 0) < self._minimum:
+            return
+
+        self._notifier.deliver(change, alert)
+
+
+def verify_notification_configuration(settings):
+    """Refuse a configuration that cannot deliver, and say what is missing.
+
+    Called at startup beside verify_security_configuration. A half-configured
+    transport is not a security problem, but it fails the same way and should
+    be found at the same moment: the alternative is discovering it when the
+    first alert does not arrive, which is the worst time to learn anything.
+
+    Returns a list of warnings worth logging.
+    """
+    warnings = []
+
+    smtp_fields = {
+        "SYSWATCH_SMTP_HOST": settings.smtp_host,
+        "SYSWATCH_SMTP_FROM": settings.smtp_from,
+        "SYSWATCH_SMTP_TO": settings.smtp_to,
+    }
+    configured = [name for name, value in smtp_fields.items() if value]
+
+    if configured and len(configured) != len(smtp_fields):
+        missing = [name for name, value in smtp_fields.items() if not value]
+        raise NotificationMisconfigured(
+            f"Mail is half configured: {', '.join(configured)} set, "
+            f"{', '.join(missing)} missing. Set the rest, or unset all of them."
+        )
+
+    # A username with no password authenticates as nobody; a password with no
+    # username is a secret sitting in a file for no reason.
+    if bool(settings.smtp_username) != bool(settings.smtp_password):
+        raise NotificationMisconfigured(
+            "SYSWATCH_SMTP_USERNAME and SYSWATCH_SMTP_PASSWORD must be set "
+            "together, or neither."
+        )
+
+    if settings.webhook_url and not settings.webhook_url.startswith(
+        ("http://", "https://")
+    ):
+        # Never quoted back. A webhook URL is usually a credential, and this
+        # message reaches the log.
+        raise NotificationMisconfigured(
+            "SYSWATCH_WEBHOOK_URL is not an http:// or https:// URL."
+        )
+
+    if settings.webhook_url and settings.webhook_url.startswith("http://"):
+        warnings.append(
+            "SYSWATCH_WEBHOOK_URL is http://: alert contents, and the token in "
+            "the URL if it has one, cross the network in clear."
+        )
+
+    if not settings.smtp_host and not settings.webhook_url:
+        warnings.append(
+            "No alert transport is configured: alerts are recorded and logged, "
+            "and nobody is told."
+        )
+
+    return warnings
+
+
 def build_notifier(settings):
     """The notifier the application uses, assembled from configuration.
 
@@ -110,20 +204,24 @@ def build_notifier(settings):
         from app.alerts.smtp import SmtpNotifier
 
         notifiers.append(
-            SmtpNotifier(
+            _filtered(settings, SmtpNotifier(
                 host=settings.smtp_host,
                 port=settings.smtp_port,
                 username=settings.smtp_username,
                 password=settings.smtp_password,
                 sender=settings.smtp_from,
                 recipients=settings.smtp_to,
-            )
+            ))
         )
 
     if settings.webhook_url:
         from app.alerts.webhook import WebhookNotifier
 
-        notifiers.append(WebhookNotifier(url=settings.webhook_url))
+        notifiers.append(_filtered(settings, WebhookNotifier(url=settings.webhook_url)))
 
     return CompositeNotifier(notifiers)
 
+
+def _filtered(settings, notifier):
+    """Outbound transports honour the minimum severity; the log does not."""
+    return SeverityFilter(notifier, settings.notify_min_severity)

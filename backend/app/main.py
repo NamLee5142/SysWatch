@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
 from app.alerts import AlertEngine
-from app.alerts.notifier import build_notifier
+from app.alerts.notifier import build_notifier, verify_notification_configuration
 from app.api import alert_rules, alerts, auth, health, hosts, snapshot, snapshots, status
 from app.auth.dependencies import require_authenticated_user
 from app.client import AgentClient
@@ -91,6 +91,12 @@ async def lifespan(app: FastAPI):
     # A process that cannot authenticate safely should fail loudly here rather
     # than serve traffic and find out later.
     for warning in verify_security_configuration(settings):
+        logger.warning(warning)
+
+    # Beside the security check, and fatal in the same way. A transport that
+    # cannot deliver should be found now rather than when the first alert does
+    # not arrive.
+    for warning in verify_notification_configuration(settings):
         logger.warning(warning)
 
     warn_about_a_stray_database(settings, logger)

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     # mailing strangers because a default pointed somewhere is worse than one
     # that says nothing, and the log notifier means "nothing configured" still
     # leaves a record.
+    # Below this, an alert is recorded and logged but not sent outward. An
+    # operator who does not want mail about warnings still wants warnings in
+    # the log, so this governs the transports rather than the record.
+    notify_min_severity: Literal["info", "warning", "critical"] = "warning"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

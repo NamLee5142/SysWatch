@@ -26,6 +26,16 @@ def an_alert(store=None, **overrides):
     )
 
 
+def transports_of(built):
+    """The transports inside a built notifier, past the severity filters."""
+    from app.alerts.notifier import SeverityFilter
+
+    return [
+        n._notifier if isinstance(n, SeverityFilter) else n
+        for n in built._notifiers
+    ]
+
+
 def assert_module_cannot_log(module_name):
     """The file that holds a secret must contain nothing that can write a log.
 
@@ -208,7 +218,7 @@ def test_no_url_means_no_webhook():
 
     built = build_notifier(Settings())
 
-    assert not any(isinstance(n, WebhookNotifier) for n in built._notifiers)
+    assert not any(isinstance(n, WebhookNotifier) for n in transports_of(built))
 
 
 def test_a_configured_url_adds_the_transport():
@@ -216,7 +226,7 @@ def test_a_configured_url_adds_the_transport():
 
     built = build_notifier(Settings(webhook_url=URL))
 
-    assert any(isinstance(n, WebhookNotifier) for n in built._notifiers)
+    assert any(isinstance(n, WebhookNotifier) for n in transports_of(built))
     assert TOKEN not in repr(built)
 
 
