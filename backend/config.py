@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     # operator who does not want mail about warnings still wants warnings in
     # the log, so this governs the transports rather than the record.
     notify_min_severity: Literal["info", "warning", "critical"] = "warning"
+    # Remind about an alert that is still firing, every this many hours. Zero
+    # is off, and off is the default: an alerting system that starts mailing
+    # every four hours because nobody chose to is worse than one that says a
+    # thing once. Acknowledging an alert, or silencing its rule, stops the
+    # reminders for it.
+    notify_repeat_hours: int = 0
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

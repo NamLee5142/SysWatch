@@ -74,6 +74,7 @@ class FakeAlertStore:
             last_seen_at=at,
             acknowledged_at=None,
             acknowledged_by=None,
+            last_notified_at=None,
         )
         self._next_id += 1
         self.rows.append(row)
@@ -101,6 +102,12 @@ class FakeAlertStore:
             row.acknowledged_at = at
             row.acknowledged_by = username
         return row
+
+    def get(self, alert_id):
+        return next((r for r in self.rows if r.id == alert_id), None)
+
+    def mark_notified(self, *, alert_id, at):
+        self._by_id(alert_id).last_notified_at = at
 
     def _by_id(self, alert_id):
         return next(r for r in self.rows if r.id == alert_id)

@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -29,7 +30,14 @@ def create_poller(settings):
     engine = None
     if settings.alerts_enabled:
         engine = AlertEngine(
-            AlertRuleStore(), AlertStore(), notifier=build_notifier(settings)
+            AlertRuleStore(),
+            AlertStore(),
+            notifier=build_notifier(settings),
+            repeat_after=(
+                timedelta(hours=settings.notify_repeat_hours)
+                if settings.notify_repeat_hours
+                else None
+            ),
         )
 
     return SnapshotPoller(

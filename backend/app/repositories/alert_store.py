@@ -264,6 +264,22 @@ class AlertStore:
 
         return self.get(alert_id)
 
+    def mark_notified(self, *, alert_id, at):
+        """Record that something was sent about this alert.
+
+        Separate from touch(), which moves last_seen_at on every evaluation.
+        A reminder needs to know when a message last went out, and an alert
+        that has been evaluated nine thousand times has been mentioned twice.
+        """
+        statement = (
+            update(AlertRecord)
+            .where(AlertRecord.id == alert_id)
+            .values(last_notified_at=to_storage_time(at))
+        )
+
+        with get_session() as session:
+            session.execute(statement)
+
     def get(self, alert_id):
         with get_session() as session:
             row = session.get(AlertRecord, alert_id)
@@ -326,4 +342,5 @@ class AlertStore:
         # Every timestamp on the record, or the API serves one naive datetime
         # among four aware ones and a client has to guess which.
         record.acknowledged_at = from_storage_time(record.acknowledged_at)
+        record.last_notified_at = from_storage_time(record.last_notified_at)
         return record

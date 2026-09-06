@@ -175,6 +175,12 @@ class AlertRecord(Base):
         DateTime(timezone=True), nullable=True
     )
     acknowledged_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    # When a notifier was last told about this alert, so a reminder knows
+    # whether one is due. Distinct from last_seen_at, which moves on every
+    # evaluation: this moves only when something was actually sent.
+    last_notified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         # The "open alert for this host" lookup the engine runs every tick, and

@@ -124,6 +124,7 @@ class Alert(BaseModel):
     resolvedAt: Optional[datetime]
     acknowledgedAt: Optional[datetime] = None
     acknowledgedBy: Optional[str] = None
+    lastNotifiedAt: Optional[datetime] = None
     lastSeenAt: datetime
 
     @classmethod
@@ -143,6 +144,7 @@ class Alert(BaseModel):
             resolvedAt=record.resolved_at,
             acknowledgedAt=record.acknowledged_at,
             acknowledgedBy=record.acknowledged_by,
+            lastNotifiedAt=record.last_notified_at,
             lastSeenAt=record.last_seen_at,
         )
 
