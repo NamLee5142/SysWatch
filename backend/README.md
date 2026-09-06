@@ -138,6 +138,15 @@ the file edited.
 | `SYSWATCH_POLL_INTERVAL_SECONDS` | `10.0` | Seconds between collections |
 | `SYSWATCH_RETENTION_DAYS` | `30` | Age at which snapshots are pruned; `0` keeps them forever |
 | `SYSWATCH_ALERTS_ENABLED` | `true` | Whether the poller evaluates alert rules after each successful collection |
+| `SYSWATCH_NOTIFY_MIN_SEVERITY` | `warning` | Lowest severity sent to a transport. Below it, alerts are still recorded and logged |
+| `SYSWATCH_NOTIFY_REPEAT_HOURS` | `0` | Re-send a still-firing alert this often. `0` sends once and never again |
+| `SYSWATCH_SMTP_HOST` | *(none)* | Unset disables mail entirely |
+| `SYSWATCH_SMTP_PORT` | `587` | |
+| `SYSWATCH_SMTP_USERNAME` | *(none)* | Set with the password, or neither |
+| `SYSWATCH_SMTP_PASSWORD` | *(none)* | Never logged and never in a `repr`. See `app/alerts/smtp.py` |
+| `SYSWATCH_SMTP_FROM` | *(none)* | Envelope sender. Required once `SMTP_HOST` is set |
+| `SYSWATCH_SMTP_TO` | *(none)* | Comma-separated recipients, like `CORS_ORIGINS`. Required once `SMTP_HOST` is set |
+| `SYSWATCH_WEBHOOK_URL` | *(none)* | Unset disables webhooks entirely. Usually a credential — treat it as one |
 | `SYSWATCH_AUTH_ENABLED` | `true` | Master switch for authentication. `false` opens every endpoint |
 | `SYSWATCH_SESSION_SECRET` | *(none)* | HMAC key for session tokens. **Required**; startup fails without it |
 | `SYSWATCH_SESSION_TTL_SECONDS` | `28800` | Session lifetime from login, absolute |
@@ -233,6 +242,66 @@ Supported metrics and operators:
 Six default rules are seeded by migration (CPU > 90 / > 95, memory > 90, disk
 > 90, processes > 500, net_recv rate). A rule the user deletes stays deleted —
 the seed migration only inserts names that are absent.
+
+### Lifecycle
+
+```text
+                  breach                     back to normal
+   (no alert) ─────────────▶ firing ──────────────────────────▶ resolved
+                               │  ▲
+              acknowledge      │  │  still breaching, and
+              ────────────────▶│  │  NOTIFY_REPEAT_HOURS has passed
+              (stops reminders)│  └───────────────────────────── reminder
+```
+
+Four things can be announced: an alert **opening**, an alert **resolving**, and
+a **reminder** that one is still firing. Nothing else is; an alert that is
+merely still true on the next tick is not news.
+
+**Acknowledging** an alert records who and when, and stops its reminders. It
+does not resolve it — the condition is still true, and closing it would discard
+the state the operator acknowledged. The first acknowledgement wins, settled in
+SQL with `WHERE acknowledged_at IS NULL` rather than by reading and then
+writing. Any authenticated user may acknowledge: it is the person on shift
+saying they have seen it, not a configuration change.
+
+**Silencing** is per rule and carries an expiry, so a silence cannot be
+forgotten. A silenced rule still evaluates, still opens and resolves alerts,
+and still shows in the dashboard — only the outbound message is withheld.
+Silencing is `admin`-only, because acknowledging one alert is personal while
+silencing a rule decides for everybody. An expired silence is no silence; the
+engine compares against the current time rather than clearing the column.
+
+A resolution is not a reminder. An acknowledged alert still announces its
+resolution, because the end of an incident is news even when its start was
+acknowledged.
+
+### Delivery
+
+| Transport | Enabled by | Notes |
+| --- | --- | --- |
+| Log | always | Costs nothing, and a machine with no mail server still has a record where an operator already looks |
+| Mail | `SYSWATCH_SMTP_HOST` | Refuses to authenticate over a connection the server will not encrypt |
+| Webhook | `SYSWATCH_WEBHOOK_URL` | `POST` of `{"change": "opened" or "resolved", "alert": {...}}` |
+
+`SYSWATCH_NOTIFY_MIN_SEVERITY` applies to the outbound transports only. The log
+is deliberately unfiltered: an operator who does not want to be mailed about
+warnings still wants warnings in the record.
+
+**A failed delivery never stops anything.** Each transport is isolated, so a
+broken webhook does not prevent the mail from going out, and neither prevents
+the poller from collecting. Failures are logged with the transport that failed
+— not the filter wrapping it — and the alert is marked as notified regardless,
+because otherwise a dead mail server turns a reminder into a retry loop against
+a server that is already down.
+
+Delivery runs on the poll path, so a transport that hangs delays the next
+collection. Both have a timeout for that reason: a refused connection on
+Windows loopback was measured at 2.06 s.
+
+Configuring the transports is covered in
+[docs/deployment.md](../docs/deployment.md#alert-delivery), including what each
+startup refusal means.
 
 ## Authentication
 
@@ -797,6 +866,13 @@ Just the firing alerts, newest `triggeredAt` first. `{"items": [...]}` — no
 
 One alert. `404` when the id is unknown.
 
+### `POST /alerts/{id}/acknowledge`
+
+Records the caller as having seen it, and stops its reminders. Returns the
+alert. `404` for an unknown id. Available to any authenticated user, not just
+`admin`. Acknowledging twice keeps the first person; a resolved alert can still
+be acknowledged, for the case where the condition cleared before anyone looked.
+
 ### `GET /alert-rules`
 
 Every configured rule, newest first. `{"items": [...]}`.
@@ -823,8 +899,21 @@ Partial update — send only the fields to change; at least one is required.
 `204`. `404` for an unknown id. Open alerts for the rule survive as history with
 `ruleId` set to `null`.
 
-These three are the only write endpoints, and the only ones that require the
-`admin` role. Reading rules is open to any authenticated caller.
+### `POST /alert-rules/{id}/silence`
+
+Withhold this rule's notifications until an expiry. Body `{"minutes": 90}`;
+`1`–`43200` (30 days). Returns the rule with `silencedUntil` set. `404` for an
+unknown id, `422` for a duration that is zero, negative, or longer than anyone
+would remember setting.
+
+### `DELETE /alert-rules/{id}/silence`
+
+Lift a silence early. Returns the rule with `silencedUntil` back to `null`.
+`404` for an unknown id, and lifting a silence that is not set is not an error.
+
+`POST`, `PUT` and `DELETE` on `/alert-rules`, including both silence endpoints,
+require the `admin` role. Reading rules is open to any authenticated caller, and
+so is acknowledging an alert.
 
 ## Testing
 

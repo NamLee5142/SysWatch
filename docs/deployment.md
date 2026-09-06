@@ -267,6 +267,129 @@ session by a long way. The password is only ever read from a hidden prompt.
 Resetting a password does not end that user's existing sessions. To do that,
 change `SYSWATCH_SESSION_SECRET` - which signs everybody out, not just them.
 
+## Alert delivery
+
+Alerts are always recorded and always written to `syswatch.log`. Telling
+somebody is separate, off by default, and configured here. Everything below
+goes in `syswatch.env` (`%PROGRAMDATA%\SysWatch\syswatch.env`), which is
+readable by Administrators and SYSTEM only, so it is the right place for a
+mailbox password. Restart the backend service after editing it.
+
+### Mail
+
+```ini
+SYSWATCH_SMTP_HOST=smtp.example.com
+SYSWATCH_SMTP_PORT=587
+SYSWATCH_SMTP_FROM=syswatch@example.com
+SYSWATCH_SMTP_TO=ops@example.com,oncall@example.com
+SYSWATCH_SMTP_USERNAME=syswatch@example.com
+SYSWATCH_SMTP_PASSWORD=...
+```
+
+`HOST`, `FROM` and `TO` are required together — setting one and not the others
+is refused at startup rather than discovered when an alert does not arrive.
+`USERNAME` and `PASSWORD` are optional, and must be set together or not at all:
+a username with no password authenticates as nobody, and a password with no
+username is a secret sitting in a file for no reason.
+
+`SYSWATCH_SMTP_TO` is comma-separated, not JSON, like `SYSWATCH_CORS_ORIGINS`.
+
+**Credentials are never sent over an unencrypted connection.** The client
+issues `STARTTLS` when the server offers it. If the server does not offer it
+and a username is configured, the send fails with
+
+```text
+smtp.example.com does not offer STARTTLS and credentials are configured;
+refusing to send the password in clear
+```
+
+That is deliberate, and not a bug to work around: an alert that did not arrive
+is a far better outcome than a mailbox password on the network. A server with
+no `STARTTLS` and no credentials configured is allowed, because there is
+nothing to protect.
+
+Port 587 is the default and is the submission port that expects `STARTTLS`.
+Implicit TLS on port 465 is not supported.
+
+### Webhook
+
+```ini
+SYSWATCH_WEBHOOK_URL=https://hooks.example.com/services/T000/B000/XXXX
+```
+
+A single `POST` per state change:
+
+```json
+{"change": "opened", "alert": {"id": 12, "ruleName": "CPU usage critical",
+ "hostName": "devbox", "severity": "critical", "value": 97.4,
+ "triggeredAt": "2026-09-06T04:18:16.169Z", "...": "..."}}
+```
+
+`change` is `opened` or `resolved`. Anything that accepts a JSON `POST` works;
+Slack, Discord and Teams all need a small forwarder to reshape the body, which
+is why there is no native integration for any of them.
+
+**Treat the URL as a credential.** Slack, Discord and Teams all put a token in
+the path. It is why `app/alerts/webhook.py` contains no logger at all, why the
+failure message says `the webhook answered 401` rather than quoting the URL,
+and why `httpx` is held at `WARNING` in `logging_config.py` — `httpx` logs the
+full URL of every request it makes, so lowering that level publishes the token
+into `syswatch.log`.
+
+Prefer `https://`. An `http://` URL is accepted with a warning at startup,
+because the alert contents and any token in the path cross the network in
+clear.
+
+### Which alerts get sent
+
+```ini
+SYSWATCH_NOTIFY_MIN_SEVERITY=warning
+SYSWATCH_NOTIFY_REPEAT_HOURS=0
+```
+
+`MIN_SEVERITY` applies to mail and webhooks only — the log records everything
+regardless, so nothing is lost, it just is not sent.
+
+`REPEAT_HOURS` is `0` by default, meaning an alert is announced once when it
+opens and once when it resolves. Setting it to `4` re-sends a still-firing
+alert every four hours until somebody acknowledges it or the condition clears.
+Acknowledging an alert stops its reminders; silencing a rule stops everything
+for that rule until the silence expires. Both are done from the dashboard's
+Alerts page.
+
+### Checking it works
+
+There is no test-message command. The quickest real check is a rule that
+cannot help firing:
+
+```powershell
+# A rule that fires on the next poll, at most ten seconds away.
+curl.exe -X POST http://127.0.0.1:8000/api/alert-rules -H "Content-Type: application/json" `
+    -b cookies.txt -d '{\"name\":\"delivery test\",\"metric\":\"cpu\",\"operator\":\"gte\",\"threshold\":0,\"severity\":\"critical\"}'
+```
+
+Watch `syswatch.log`; the log transport always runs, so a line there with no
+mail arriving separates "the alert did not fire" from "the transport failed".
+Delete the rule afterwards.
+
+### When delivery fails
+
+A failed delivery never stops anything. Each transport is isolated, so a broken
+webhook does not stop the mail, and neither stops the poller collecting:
+
+```text
+WARNING app.alerts.notifier: Could not deliver an alert through smtp
+```
+
+The alert is still recorded, still visible in the dashboard, and still marked
+as notified — otherwise a dead mail server turns a reminder into a retry loop
+against a server that is already down.
+
+Delivery runs on the poll path, so a transport that hangs delays the next
+collection. Both transports time out after 10 seconds for that reason. A
+refused connection is fast rather than free: 2.06 s measured on Windows
+loopback, paid once per state change.
+
 ## What each startup failure means
 
 The backend refuses to start rather than serving traffic in a state it cannot
@@ -278,9 +401,25 @@ defend. Each message names the fix.
 | `SYSWATCH_SESSION_SECRET must be at least 32 characters` | The key is too short to be a key | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `SYSWATCH_AUTH_ENABLED is false, which opens every endpoint and treats every caller as an administrator` | Authentication switched off on a real install | Remove the setting, or set `SYSWATCH_DEV_MODE=true` if this really is a development box |
 | `SYSWATCH_CORS_ORIGINS contains '...'. The session cookie is Secure, so a browser on an http:// origin will never send it` | A plain-HTTP origin outside dev mode | Use `https://`, or serve the dashboard from the backend and drop the setting entirely |
+| `Mail is half configured: ... set, ... missing` | Some of `SMTP_HOST` / `SMTP_FROM` / `SMTP_TO` but not all | Set the rest, or unset all three |
+| `SYSWATCH_SMTP_USERNAME and SYSWATCH_SMTP_PASSWORD must be set together, or neither` | One without the other | Set both to authenticate, or neither for an open relay |
+| `SYSWATCH_WEBHOOK_URL is not an http:// or https:// URL` | A typo, or a host with no scheme | Give a full URL. The value is never quoted back in the message, because it is usually a credential |
 | `no such table: users` | Migrations never ran | `alembic upgrade head` |
 | `PermissionError: ... syswatch.env` | Not running elevated | The config is Administrators and SYSTEM only, by design |
 | Agent: `Could not listen on 127.0.0.1:8080 - is another agent already running?` | Something already holds the port | `sc.exe query SysWatchAgent`, or `netstat -ano \| findstr :8080` |
+
+Two notification problems are warnings rather than refusals, because both
+still deliver something:
+
+```text
+WARNING: SYSWATCH_WEBHOOK_URL is http://: alert contents, and the token in the
+         URL if it has one, cross the network in clear.
+WARNING: No alert transport is configured: alerts are recorded and logged, and
+         nobody is told.
+```
+
+The second is the default state of a fresh install, and is worth seeing once so
+that it is a choice.
 
 A failed poll is not a startup failure. The backend runs without the agent; the
 stored history stays readable and the poller reports the outage:
