@@ -11,8 +11,6 @@ from app.auth.dependencies import require_admin, require_authenticated_user
 from app.auth.password import hash_password
 from app.auth.service import AuthService
 from app.auth.session import SESSION_COOKIE
-from app.db import session as db_session
-from app.db.models import Base
 from app.models.auth import CurrentUser
 from app.repositories import UserStore
 
@@ -20,15 +18,9 @@ PASSWORD = "correct horse Battery staple"
 
 
 @pytest.fixture(autouse=True)
-def environment(monkeypatch):
+def environment(monkeypatch, database):
     monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret-long-enough-for-the-startup-check")
     monkeypatch.setenv("SYSWATCH_AUTH_ENABLED", "true")
-
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    yield
-    db_session.dispose_engine()
 
 
 @pytest.fixture

@@ -2,8 +2,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.db import session as db_session
-from app.db.models import Base
 from app.models.snapshot import Snapshot
 from app.repositories import SnapshotStore
 
@@ -11,14 +9,8 @@ BASE_TIME = datetime(2026, 8, 12, 11, 15, 27, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def store():
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
-    yield SnapshotStore()
-
-    db_session.dispose_engine()
+def store(database):
+    return SnapshotStore()
 
 
 def make_snapshot(

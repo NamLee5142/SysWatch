@@ -454,6 +454,26 @@ The poller prunes snapshots older than `SYSWATCH_RETENTION_DAYS`, at most once
 an hour rather than on every tick. Pruning failures are logged and swallowed:
 housekeeping must never be the reason collection stops.
 
+### Running the suite against PostgreSQL
+
+SQLite is what ships and what is supported. PostgreSQL is a **test target**: one
+CI job runs the whole suite against it, to keep "the repository layer is the
+storage boundary" an executed claim rather than a comment. Nothing that ships
+opens a PostgreSQL connection, and `deploy/` cannot install one.
+
+```bash
+docker run -d --name syswatch-pg -p 55432:5432     -e POSTGRES_PASSWORD=syswatch -e POSTGRES_DB=syswatch postgres:16
+pip install "psycopg[binary]"
+SYSWATCH_TEST_DATABASE_URL=postgresql+psycopg://postgres:syswatch@127.0.0.1:55432/syswatch pytest
+```
+
+`SYSWATCH_TEST_DATABASE_URL` is read by `conftest.py` and by nothing else - it
+is not a setting, and `SYSWATCH_DATABASE_URL` remains what the application
+reads. Six test modules keep their own SQLite engines on purpose and are
+unaffected by it: they are about SQLite itself (the pragmas in `db/session.py`,
+`VACUUM INTO` in `db/backup.py`), or they need a file-backed database to put
+real threads on separate connections.
+
 ## API
 
 **Every endpoint below is under `/api`.** `GET /health` is served at

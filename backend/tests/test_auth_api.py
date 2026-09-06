@@ -10,8 +10,7 @@ from app.api.auth import SESSION_COOKIE, login_limiter
 from app.auth.password import hash_password
 from app.auth.rate_limit import DEFAULT_LIMIT, LoginRateLimiter
 from app.db import get_session as db_scope
-from app.db import session as db_session
-from app.db.models import Base, SessionRecord, UserRecord
+from app.db.models import SessionRecord, UserRecord
 from app.main import create_app
 from app.repositories import UserStore
 
@@ -19,7 +18,7 @@ PASSWORD = "correct horse Battery staple"
 
 
 @pytest.fixture(autouse=True)
-def environment(monkeypatch):
+def environment(monkeypatch, database):
     monkeypatch.setenv("SYSWATCH_SESSION_SECRET", "test-secret-long-enough-for-the-startup-check")
     # conftest turns authentication off for the suite at large; this file is
     # entirely about it.
@@ -29,12 +28,6 @@ def environment(monkeypatch):
     # The limiter is process-wide, so failed logins would otherwise accumulate
     # across tests until an unrelated one started getting 429s.
     login_limiter.clear()
-
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    yield
-    db_session.dispose_engine()
 
 
 @pytest.fixture

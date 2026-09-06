@@ -10,7 +10,7 @@ from app.auth.service import AuthService
 from app.auth.session import hash_token, new_token
 from app.db import get_session as db_scope
 from app.db import session as db_session
-from app.db.models import Base, SessionRecord
+from app.db.models import SessionRecord
 from app.repositories import SessionStore, UserStore
 
 SECRET = "test-secret-not-a-real-one"
@@ -18,14 +18,8 @@ PASSWORD = "correct horse Battery staple"
 
 
 @pytest.fixture
-def auth():
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
-    yield AuthService(secret=SECRET, ttl_seconds=3600)
-
-    db_session.dispose_engine()
+def auth(database):
+    return AuthService(secret=SECRET, ttl_seconds=3600)
 
 
 def make_user(username="admin", password=PASSWORD, role="admin", enabled=True):
@@ -216,11 +210,7 @@ def test_pruning_removes_only_expired_sessions(auth):
     assert stored_token_hashes() == [hash_token(live, SECRET)]
 
 
-def test_pruning_uses_an_explicit_cutoff_when_given():
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
+def test_pruning_uses_an_explicit_cutoff_when_given(database):
     user = make_user()
     SessionStore().create(
         token_hash="abc",

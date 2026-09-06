@@ -6,19 +6,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import session as db_session
-from app.db.models import Base, SnapshotRecord
+from app.db.models import SnapshotRecord
 
 
 @pytest.fixture
-def session():
+def session(database):
     # A plain Session rather than app.db.get_session(): several tests provoke an
     # IntegrityError on purpose, and get_session() commits on exit, which would
     # fail on the already-rolled-back transaction.
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
-    with Session(engine) as active:
+    with Session(database) as active:
         yield active
         active.rollback()
 

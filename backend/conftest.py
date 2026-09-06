@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
 os.environ["SYSWATCH_CONFIG_FILE"] = str(ROOT / "no-such-config.env")
 
 from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 from app.auth.password import hash_password  # noqa: E402
 from app.auth.session import SESSION_COOKIE  # noqa: E402
@@ -75,16 +76,74 @@ def auth_enabled(monkeypatch):
     monkeypatch.delenv("SYSWATCH_DEV_MODE", raising=False)
 
 
+# What the suite runs against. SQLite unless told otherwise, because SQLite is
+# what ships and what every developer already has.
+#
+# The other value this takes is a PostgreSQL URL, set by one CI job. Sprint 10
+# claimed the repository layer keeps PostgreSQL a configuration change; that
+# claim had never been executed. It is a test target, not a supported
+# deployment - see docs/deployment.md, which documents SQLite and only SQLite.
+TEST_DATABASE_URL = os.environ.get("SYSWATCH_TEST_DATABASE_URL", "sqlite://")
+
+
+_schema_built = False
+
+
+def start_test_database():
+    """A throwaway database with the full schema. Returns the engine.
+
+    Never the real syswatch.db: every test that touches storage comes through
+    here.
+
+    Emptying it is free on SQLite and is not free anywhere else. An in-memory
+    SQLite database ceases to exist when its engine is disposed, so each test
+    starts clean by construction. A server keeps whatever the last test left -
+    including the sequences behind the ids that assertions spell out as 1 and
+    2 - so it has to be emptied explicitly, and doing that with DDL per test
+    costs more than the tests do: a full drop and rebuild of every table ran
+    the suite roughly six times slower than one TRUNCATE ... RESTART IDENTITY.
+    """
+    global _schema_built
+
+    db_session.dispose_engine()
+    engine = db_session.init_engine(TEST_DATABASE_URL)
+
+    if TEST_DATABASE_URL.startswith("sqlite"):
+        Base.metadata.create_all(engine)
+        return engine
+
+    if not _schema_built:
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
+        _schema_built = True
+
+    _truncate_everything(engine)
+    return engine
+
+
+def _truncate_everything(engine):
+    """Empty every table and reset every sequence, in one statement.
+
+    CASCADE because the tables reference each other; RESTART IDENTITY because
+    a test that asserts an id is 1 is asserting about a fresh database, which
+    is what it would get on SQLite.
+
+    alembic_version is dropped rather than truncated because it is not in
+    Base.metadata at all - alembic owns it, and test_readiness.py creates it by
+    hand to describe a migrated database. On SQLite it disappears with the
+    in-memory database it was made in. Left standing on a server it makes the
+    next test's readiness check report a schema version nobody stamped, which
+    is how "an unmigrated database is not ready" came back 200.
+    """
+    tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
 @pytest.fixture
 def database():
-    """A throwaway in-memory database with the full schema.
-
-    Never the real syswatch.db: every test that touches storage goes through
-    this or builds its own the same way.
-    """
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
+    engine = start_test_database()
 
     yield engine
 

@@ -4,8 +4,6 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import session as db_session
-from app.db.models import Base
 from app.main import create_app
 from app.repositories import AlertRuleStore, AlertStore
 
@@ -16,14 +14,8 @@ client = TestClient(app, base_url="http://testserver/api")
 
 
 @pytest.fixture(autouse=True)
-def stores():
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
-    yield AlertRuleStore(), AlertStore()
-
-    db_session.dispose_engine()
+def stores(database):
+    return AlertRuleStore(), AlertStore()
 
 
 def make_rule(stores, name="CPU high", metric="cpu", operator="gt", threshold=90.0, severity="warning"):

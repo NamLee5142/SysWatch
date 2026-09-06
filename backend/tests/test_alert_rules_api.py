@@ -4,8 +4,6 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db import session as db_session
-from app.db.models import Base
 from app.main import create_app
 from app.repositories import AlertRuleStore, AlertStore
 
@@ -21,13 +19,7 @@ VALID_RULE = {
 }
 
 
-@pytest.fixture(autouse=True)
-def database():
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-    yield
-    db_session.dispose_engine()
+pytestmark = pytest.mark.usefixtures("database")
 
 
 def test_list_is_empty_on_a_fresh_database():
