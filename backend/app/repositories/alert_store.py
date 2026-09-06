@@ -183,7 +183,12 @@ class AlertStore:
             session.execute(statement)
 
     def resolve(self, *, alert_id, value, at):
-        """Close an alert: state -> ok, resolved_at stamped."""
+        """Close an alert: state -> ok, resolved_at stamped.
+
+        Returns the closed alert, like open_new returns the opened one. A
+        caller announcing the resolution needs the resolved row: the one it
+        held before this call still says it is firing.
+        """
         stored_at = to_storage_time(at)
         statement = (
             update(AlertRecord)
@@ -198,6 +203,8 @@ class AlertStore:
 
         with get_session() as session:
             session.execute(statement)
+
+        return self.get(alert_id)
 
     def get(self, alert_id):
         with get_session() as session:

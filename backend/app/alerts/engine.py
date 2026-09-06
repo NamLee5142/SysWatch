@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 
 from app.alerts.evaluator import evaluate as evaluate_rule
+from app.alerts.notifier import OPENED, RESOLVED
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +30,10 @@ class AlertEngine:
     persistence layer can change beneath it.
     """
 
-    def __init__(self, rule_store, alert_store):
+    def __init__(self, rule_store, alert_store, notifier=None):
         self._rule_store = rule_store
         self._alert_store = alert_store
+        self._notifier = notifier
 
     def evaluate(self, snapshot) -> EvaluationSummary:
         """Evaluate every enabled rule against one snapshot and persist the result.
@@ -63,10 +65,11 @@ class AlertEngine:
 
             if violated:
                 if existing is None:
-                    self._alert_store.open_new(
+                    opened = self._alert_store.open_new(
                         rule=rule, host_name=host_name, value=value, at=at
                     )
                     summary.opened += 1
+                    self._announce(OPENED, opened)
                 else:
                     self._alert_store.touch(alert_id=existing.id, value=value, at=at)
                     summary.still_firing += 1
@@ -74,16 +77,22 @@ class AlertEngine:
                 # Enabled, evaluated, no longer breaching — recovered. A None
                 # value (metric absent) is missing data, not a recovery, so it
                 # falls through and the alert stays open.
-                self._alert_store.resolve(alert_id=existing.id, value=value, at=at)
+                resolved = self._alert_store.resolve(
+                    alert_id=existing.id, value=value, at=at
+                )
                 summary.resolved += 1
+                self._announce(RESOLVED, resolved)
 
         # A rule disabled or deleted since it last fired leaves a stuck alert
         # otherwise: its own evaluation never runs because enabled_rules() no
         # longer returns it. Resolve it here on the value it last held.
         for alert in open_alerts:
             if alert.rule_id not in enabled_ids:
-                self._alert_store.resolve(alert_id=alert.id, value=alert.value, at=at)
+                resolved = self._alert_store.resolve(
+                    alert_id=alert.id, value=alert.value, at=at
+                )
                 summary.resolved += 1
+                self._announce(RESOLVED, resolved)
 
         if summary.changed:
             logger.info(
@@ -94,3 +103,20 @@ class AlertEngine:
             )
 
         return summary
+
+    def _announce(self, change, alert):
+        """Hand a state change to the notifier, and never fail because of it.
+
+        The same rule persistence follows in SnapshotService: collecting and
+        evaluating are the work, and telling somebody about it is a side
+        effect. A mail server that is down must not stop alerts being recorded
+        - the row is the durable thing, and the message is a courtesy on top
+        of it.
+        """
+        if self._notifier is None or alert is None:
+            return
+
+        try:
+            self._notifier.deliver(change, alert)
+        except Exception:
+            logger.warning("Could not deliver an alert notification", exc_info=True)

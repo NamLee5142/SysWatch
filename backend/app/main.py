@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import logging_config as app_logging
 from app.alerts import AlertEngine
+from app.alerts.notifier import LoggingNotifier
 from app.api import alert_rules, alerts, auth, health, hosts, snapshot, snapshots, status
 from app.auth.dependencies import require_authenticated_user
 from app.client import AgentClient
@@ -27,7 +28,7 @@ def create_poller(settings):
 
     engine = None
     if settings.alerts_enabled:
-        engine = AlertEngine(AlertRuleStore(), AlertStore())
+        engine = AlertEngine(AlertRuleStore(), AlertStore(), notifier=LoggingNotifier())
 
     return SnapshotPoller(
         service,
