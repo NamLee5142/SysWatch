@@ -226,19 +226,16 @@ One tag per release, each on the merge that ended its sprint.
 | `v0.9.0` | `6a28b03` | security and authentication |
 | `v0.10.0` | `8c0309a` | production hardening |
 
-This table exists because the tags were wrong for a month and nothing said so.
+Sprints 5 to 9 were first tagged `v.0.5.0`, with a stray dot, and re-tagged
+without it. `origin` and the GitHub releases have been correct since; a clone
+made before the correction was not, and stayed that way, because **`git fetch`
+does not move a tag that already exists locally**. `git rev-parse v0.5.0`
+answered from the stale copy without a word about it, and five releases
+appeared to name one commit.
 
-The first five releases were tagged `v.0.5.0`, with a stray dot. Correcting the
-spelling later meant re-tagging, and re-tagging in one pass names whatever is
-checked out - so `v0.5.0` through `v0.9.0` all landed on the tip of `main` at
-that moment, the sprint 9 merge, rather than on the commit each release was
-actually cut from. The dotted tags were the ones still pointing at the right
-commits, which made them look like the mistake.
-
-`git tag v0.6.0 <commit>` takes the commit for exactly this reason; without it,
-where a release came from is recoverable only by reading `git log` and guessing,
-which is not where you want to be during an incident on a version you no longer
-build.
+`git fetch --tags --force` is what updates them. `git ls-remote --tags origin`
+is what settles an argument about which is right, because it asks the remote
+instead of the copy.
 
 Tagging a release is two claims, and the table checks both: the version
 increases, and so does the date.
