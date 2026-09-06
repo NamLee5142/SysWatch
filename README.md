@@ -145,16 +145,26 @@ directory out of anywhere world-readable.
 
 ## Phase 1 - Native Agent
 
-- [ ] Initialize CMake project
+- [x] Initialize CMake project
 - [ ] Cross-platform abstraction layer
-- [ ] CPU collector
-- [ ] Memory collector
-- [ ] Disk collector
+- [x] CPU collector
+- [x] Memory collector
+- [x] Disk collector
 - [x] Network collector
 - [x] Process collector
 - [ ] Configuration loader
-- [ ] JSON serialization
+- [x] JSON serialization
 - [ ] Secure communication module
+
+The three left unticked are genuinely absent, not merely unpolished. Every
+collector is `#if defined(_WIN32)` with a stub returning zero on the other
+branch, which is a placeholder rather than an abstraction layer. The agent
+reads no configuration at all - `AgentConfig` carries compiled-in defaults, and
+`CommandLine.cpp` accepts a mode and nothing else, deliberately: there is no
+`--bind` flag because the agent must never listen anywhere but `127.0.0.1`.
+Secure communication is the same answer from the other direction - it is
+unnecessary while the only listener is on loopback, and it is what a second
+machine would need first.
 
 ---
 
@@ -168,27 +178,47 @@ directory out of anywhere world-readable.
 - [x] Logging
 - [x] Configuration management
 
+Agent registration stays unticked because nothing registers: the backend polls
+one agent at a URL it is configured with. What replaces it is the subject of
+`docs/sprint-11.md`, which settles on the agent pushing to the backend rather
+than the backend discovering agents.
+
 ---
 
 ## Phase 3 - Storage & Visualization
 
 - [ ] Time-series database
-- [ ] Historical metric storage
+- [x] Historical metric storage
 - [x] Dashboard
 - [x] Live monitoring
 - [x] Historical charts
-- [ ] Search and filtering
+- [x] Search and filtering
+
+Filtering means host and time window, with paging, through `/snapshots` and the
+dashboard's History page. There is no free-text search over metrics and it is
+not clear what one would return.
+
+Time-series database stays unticked because SQLite is not one. Bucketed
+aggregates are computed per query in `SnapshotStore.series`, which is a
+different thing from a store built for the shape, and at one host it is the
+right trade.
 
 ---
 
 ## Phase 4 - Advanced Features
 
 - [x] Alert engine
-- [ ] Email notifications
+- [x] Email notifications
 - [ ] Plugin system
 - [ ] Remote configuration
 - [ ] Agent auto-update
 - [ ] User management
+
+Notifications are SMTP and webhook, filtered by severity, with acknowledgement
+and per-rule silencing. User management is `python -m app.auth.create_admin`
+and nothing else: accounts can be created from a command line on the machine,
+never through the API, so there is no endpoint that can create an
+administrator.
 
 ---
 
@@ -206,6 +236,11 @@ directory out of anywhere world-readable.
 Docker and Kubernetes stay unticked deliberately: this release targets a
 Windows install, and containers are a different deployment story that would
 want PostgreSQL first.
+
+Performance optimization stays unticked as a roadmap item even though
+individual measurements have driven changes - the blocking `/snapshot` route,
+WAL mode, the poll interval. None of that was a deliberate pass over the
+system, and ticking it would claim one.
 
 ---
 
