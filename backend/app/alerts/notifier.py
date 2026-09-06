@@ -120,5 +120,10 @@ def build_notifier(settings):
             )
         )
 
+    if settings.webhook_url:
+        from app.alerts.webhook import WebhookNotifier
+
+        notifiers.append(WebhookNotifier(url=settings.webhook_url))
+
     return CompositeNotifier(notifiers)
 

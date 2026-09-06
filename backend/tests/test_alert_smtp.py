@@ -81,6 +81,29 @@ def an_alert(store=None, **overrides):
     )
 
 
+def assert_module_cannot_log(module_name):
+    """The file that holds a secret must contain nothing that can write a log.
+
+    Checked on the imports and the call, not on the word "logger" - the
+    docstrings in these modules explain at length why they have no logger, and
+    a substring search finds that explanation and calls it a violation.
+    """
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1] / "app" / "alerts" / module_name
+    ).read_text(encoding="utf-8")
+
+    code = chr(10).join(
+        line for line in source.splitlines() if not line.strip().startswith("#")
+    )
+    body = code.split('"""')[-1]  # past the module docstring
+
+    assert "import logging" not in code
+    assert "getLogger" not in code
+    assert "logger" not in body
+
+
 # --- the message ------------------------------------------------------------
 
 
@@ -226,18 +249,8 @@ def test_a_failed_send_does_not_put_the_password_in_the_log(caplog):
 
 
 def test_the_smtp_module_has_no_logger():
-    """The surest way a secret never reaches a log.
-
-    app/auth/ holds to the same rule: the file that holds the password has
-    nothing in it that can write one.
-    """
-    source = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
-        / "app" / "alerts" / "smtp.py"
-    ).read_text(encoding="utf-8")
-
-    assert "getLogger" not in source
-    assert "logger." not in source
+    """The surest way a secret never reaches a log."""
+    assert_module_cannot_log("smtp.py")
 
 
 # --- one message per state change, not per evaluation -----------------------

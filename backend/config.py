@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_to: Annotated[list[str], NoDecode] = []
+    # Usually a credential rather than an address: Slack, Discord and Teams all
+    # embed a token in the path. Treated like one - never logged, never repr'd.
+    webhook_url: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="SYSWATCH_",

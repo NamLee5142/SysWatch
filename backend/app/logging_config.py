@@ -83,6 +83,12 @@ def configure_logging(settings=None):
     # Nothing is lost by silencing it. A poll that fails is reported by
     # app.services.snapshot_poller, which knows what the request was for;
     # httpx only knows that a GET happened.
+    #
+    # It has since acquired a second job. httpx logs the full URL of every
+    # request, and a webhook URL is usually a credential - Slack, Discord and
+    # Teams all put a token in the path. So this line is what keeps that token
+    # out of the log file, and lowering it to debug a request publishes the
+    # token as well. See app/alerts/webhook.py.
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     return log_file
