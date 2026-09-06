@@ -98,10 +98,36 @@ class AlertRuleStore:
 
         return True
 
+    def silence(self, *, rule_id, until):
+        """Silence a rule until an instant, or clear it with until=None.
+
+        Returns the rule, or None. Silencing an already-silenced rule replaces
+        the expiry rather than refusing: an operator extending a maintenance
+        window is doing the obvious thing, and making them clear it first would
+        leave a gap where the alerts come back.
+        """
+        statement = (
+            update(AlertRuleRecord)
+            .where(AlertRuleRecord.id == rule_id)
+            .values(
+                silenced_until=to_storage_time(until) if until else None,
+                updated_at=_now(),
+            )
+        )
+
+        with get_session() as session:
+            result = session.execute(statement)
+
+            if result.rowcount == 0:
+                return None
+
+        return self.get(rule_id)
+
     def _hydrate(self, record):
         if record is None:
             return None
 
+        record.silenced_until = from_storage_time(record.silenced_until)
         record.created_at = from_storage_time(record.created_at)
         record.updated_at = from_storage_time(record.updated_at)
         return record

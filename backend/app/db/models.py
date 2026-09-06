@@ -99,6 +99,19 @@ class AlertRuleRecord(Base):
     threshold: Mapped[float] = mapped_column(Float, nullable=False)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Silenced until this instant; NULL means not silenced.
+    #
+    # Separate from `enabled`, which is a different intention. Disabling a rule
+    # says "this is not a condition I care about"; silencing says "I know, I am
+    # fixing it, stop telling me until then". A disabled rule stops evaluating
+    # and resolves its open alerts; a silenced one keeps evaluating and keeps
+    # recording, and only the message is withheld.
+    #
+    # An instant rather than a boolean, because a silence nobody can forget to
+    # lift is the only kind worth having.
+    silenced_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Naive UTC, stamped by AlertRuleStore on write — the same convention
     # collected_at follows. No server default, so the column never disagrees

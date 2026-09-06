@@ -25,9 +25,11 @@ def make_snapshot(cpu_usage=10.0, mem_used=4096, host_name="devbox", collected_a
     )
 
 
-def rule(id, metric="cpu", operator="gt", threshold=90.0, severity="warning", name=None, enabled=True):
+def rule(id, metric="cpu", operator="gt", threshold=90.0, severity="warning",
+         name=None, enabled=True, silenced_until=None):
     return SimpleNamespace(
         id=id,
+        silenced_until=silenced_until,
         name=name or f"rule-{id}",
         metric=metric,
         operator=operator,

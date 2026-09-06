@@ -70,6 +70,7 @@ class AlertRule(BaseModel):
     threshold: float
     severity: Severity
     enabled: bool
+    silencedUntil: Optional[datetime] = None
     createdAt: datetime
     updatedAt: datetime
 
@@ -88,6 +89,7 @@ class AlertRule(BaseModel):
             threshold=record.threshold,
             severity=record.severity,
             enabled=record.enabled,
+            silencedUntil=record.silenced_until,
             createdAt=record.created_at,
             updatedAt=record.updated_at,
         )
@@ -158,3 +160,19 @@ class AlertList(BaseModel):
     """Active alerts — a plain list, like HostList; there are never many."""
 
     items: list[Alert]
+
+
+class AlertRuleSilence(BaseModel):
+    """How long to stop being told about a rule.
+
+    A duration rather than an instant. An operator knows "I will have fixed
+    this within the hour"; making them compute a UTC timestamp invites the
+    timezone mistake that silences a rule until yesterday.
+    """
+
+    minutes: int = Field(
+        ...,
+        gt=0,
+        le=60 * 24 * 30,
+        description="How long from now. Must be positive; 30 days at most.",
+    )

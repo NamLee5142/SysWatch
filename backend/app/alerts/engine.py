@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.alerts.evaluator import evaluate as evaluate_rule
 from app.alerts.notifier import OPENED, RESOLVED
@@ -53,6 +54,18 @@ class AlertEngine:
         rules = list(self._rule_store.enabled_rules())
         enabled_ids = {rule.id for rule in rules}
 
+        # Silenced rules evaluate and record exactly as they always did. Only
+        # the announcement is withheld, and only while the silence lasts - the
+        # expiry is compared against now rather than against the snapshot's
+        # collectedAt, because a silence is a decision somebody made about the
+        # clock on the wall, not about when the metric was sampled.
+        now = datetime.now(timezone.utc)
+        silenced_ids = {
+            rule.id
+            for rule in rules
+            if rule.silenced_until is not None and rule.silenced_until > now
+        }
+
         open_alerts = list(self._alert_store.active(host_name))
         open_by_rule = {
             alert.rule_id: alert for alert in open_alerts if alert.rule_id is not None
@@ -69,7 +82,8 @@ class AlertEngine:
                         rule=rule, host_name=host_name, value=value, at=at
                     )
                     summary.opened += 1
-                    self._announce(OPENED, opened)
+                    if rule.id not in silenced_ids:
+                        self._announce(OPENED, opened)
                 else:
                     self._alert_store.touch(alert_id=existing.id, value=value, at=at)
                     summary.still_firing += 1
@@ -81,7 +95,8 @@ class AlertEngine:
                     alert_id=existing.id, value=value, at=at
                 )
                 summary.resolved += 1
-                self._announce(RESOLVED, resolved)
+                if rule.id not in silenced_ids:
+                    self._announce(RESOLVED, resolved)
 
         # A rule disabled or deleted since it last fired leaves a stuck alert
         # otherwise: its own evaluation never runs because enabled_rules() no
