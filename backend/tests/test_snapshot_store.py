@@ -304,3 +304,29 @@ def test_series_skips_rows_that_never_carried_the_metric(store):
 
     # The first row has a NULL process_count — nothing to plot, not a zero.
     assert [point.value for point in points] == [200.0]
+
+
+# --- the bucket goes into SQL text ------------------------------------------
+
+
+def test_an_unknown_bucket_is_refused(store):
+    """The bucket name is interpolated into SQL, so it has to be a known one.
+
+    Unreachable through the API, which types the parameter as a Literal and
+    rejects anything else with a 422 before the store is called. This is the
+    store keeping its own promise instead of relying on that.
+    """
+    with pytest.raises(ValueError, match="Unknown bucket"):
+        store.series("cpu", bucket="hour'); DROP TABLE snapshots; --")
+
+    assert store.count() == 0  # still there
+
+
+def test_every_offered_bucket_is_accepted(store):
+    """BUCKETS and the API's Bucket type have to agree, or one of them lies."""
+    from app.models.snapshot import Bucket
+    from app.repositories.snapshot_store import BUCKETS, RAW_BUCKET
+
+    offered = set(Bucket.__args__)
+
+    assert offered == set(BUCKETS) | {RAW_BUCKET}

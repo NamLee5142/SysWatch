@@ -474,6 +474,22 @@ unaffected by it: they are about SQLite itself (the pragmas in `db/session.py`,
 `VACUUM INTO` in `db/backup.py`), or they need a file-backed database to put
 real threads on separate connections.
 
+The CI container is deliberately **not** set to UTC. Timestamps are stored as
+naive UTC, which SQLite has no choice about; a server supplies the offset its
+session timezone implies, so on a UTC server correct and incorrect code look
+identical. `_configure_postgresql` pins every connection to UTC for the same
+reason `_configure_sqlite` sets the pragmas, and a container seven hours off is
+what proves it is still there.
+
+What stays SQLite-only, by design rather than by omission:
+
+| | |
+| --- | --- |
+| `db/backup.py` | `VACUUM INTO`. Refuses a non-SQLite URL outright rather than producing something that is not a backup. |
+| `db/session.py` pragmas | WAL, `busy_timeout`, `foreign_keys`. All three are answers to SQLite problems a server does not have. |
+| Migrations | Alembic runs against SQLite only, here and in `deploy/`. Batch mode and the naming convention exist because SQLite cannot `ALTER` in place. The PostgreSQL job builds its schema from the models with `create_all`, so the migration chain is **not** exercised against it. |
+| One test | `test_collected_at_reads_back_without_a_timezone`, marked `sqlite_only`. It asserts that the offset is dropped, which is why `to_storage_time` exists. |
+
 ## API
 
 **Every endpoint below is under `/api`.** `GET /health` is served at

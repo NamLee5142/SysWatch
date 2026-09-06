@@ -141,6 +141,29 @@ def _truncate_everything(engine):
         connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "sqlite_only: a fact about SQLite rather than about this application",
+    )
+
+
+def pytest_collection_modifyitems(items):
+    """Skip the SQLite-specific tests when pointed at another engine.
+
+    A short list, and each entry is deliberate: what is being asserted is a
+    property of SQLite that the application is built around, so the test is
+    worth keeping and is not worth generalising.
+    """
+    if TEST_DATABASE_URL.startswith("sqlite"):
+        return
+
+    skip = pytest.mark.skip(reason=f"a SQLite behaviour; running on {TEST_DATABASE_URL.split(':')[0]}")
+    for item in items:
+        if "sqlite_only" in item.keywords:
+            item.add_marker(skip)
+
+
 @pytest.fixture
 def database():
     engine = start_test_database()

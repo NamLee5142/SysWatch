@@ -113,6 +113,16 @@ jobs:
           # protect.
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: syswatch
+          # Deliberately not UTC.
+          #
+          # A naive datetime written to a TIMESTAMPTZ column is given whatever
+          # offset the session's TimeZone carries, so a server that is already
+          # UTC agrees with SQLite by luck rather than by design - and a job on
+          # one cannot tell the difference between code that pins the timezone
+          # and code that forgot to. Pointing this container seven hours off
+          # means the suite fails if app/db/session.py stops doing it.
+          TZ: Asia/Ho_Chi_Minh
+          PGTZ: Asia/Ho_Chi_Minh
         ports:
           - 5432:5432
         # Without this the first test can beat the server to being ready, and
