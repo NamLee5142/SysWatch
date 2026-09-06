@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.auth.dependencies import require_authenticated_user
 from app.models.alert import Alert, AlertList, AlertPage, AlertState
 from app.repositories import AlertStore
 from app.repositories.snapshot_store import to_storage_time
@@ -91,3 +92,30 @@ def _validate_window(since, until):
     # caller may well pass one of each.
     if to_storage_time(since) > to_storage_time(until):
         raise HTTPException(status_code=422, detail="since must not be after until")
+
+
+@router.post(
+    "/alerts/{alert_id}/acknowledge",
+    response_model=Alert,
+    summary="Record that somebody is dealing with this alert",
+    responses={404: {"description": "No such alert"}},
+)
+def acknowledge_alert(
+    alert_id: int,
+    current=Depends(require_authenticated_user),
+):
+    """Acknowledge an alert. It stays open.
+
+    Any logged-in user, not admin only. Acknowledging is not a configuration
+    change - it is the person on shift saying they have seen it, and requiring
+    a role for that would leave a viewer watching an alert they cannot answer.
+    Who it was is recorded, which is the accountability that matters here.
+    """
+    record = create_alert_store().acknowledge(
+        alert_id=alert_id, username=current.username
+    )
+
+    if record is None:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    return Alert.from_record(record)

@@ -206,6 +206,37 @@ class AlertStore:
 
         return self.get(alert_id)
 
+    def acknowledge(self, *, alert_id, username, at=None):
+        """Record that somebody has seen this alert. Returns it, or None.
+
+        The alert stays open. Acknowledgement says "I know, I am dealing with
+        it", not "this is over" - closing it would lose the state the operator
+        acknowledged, and the condition is still true.
+
+        Acknowledging twice keeps the first name and time. The question an
+        acknowledgement answers is who picked it up, and that is whoever got
+        there first.
+        """
+        record = self.get(alert_id)
+
+        if record is None:
+            return None
+
+        if record.acknowledged_at is not None:
+            return record
+
+        stored_at = to_storage_time(at or datetime.now(timezone.utc))
+        statement = (
+            update(AlertRecord)
+            .where(AlertRecord.id == alert_id)
+            .values(acknowledged_at=stored_at, acknowledged_by=username)
+        )
+
+        with get_session() as session:
+            session.execute(statement)
+
+        return self.get(alert_id)
+
     def get(self, alert_id):
         with get_session() as session:
             row = session.get(AlertRecord, alert_id)
@@ -265,4 +296,7 @@ class AlertStore:
         record.triggered_at = from_storage_time(record.triggered_at)
         record.resolved_at = from_storage_time(record.resolved_at)
         record.last_seen_at = from_storage_time(record.last_seen_at)
+        # Every timestamp on the record, or the API serves one naive datetime
+        # among four aware ones and a client has to guess which.
+        record.acknowledged_at = from_storage_time(record.acknowledged_at)
         return record

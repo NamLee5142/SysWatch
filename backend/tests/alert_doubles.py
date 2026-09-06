@@ -70,6 +70,8 @@ class FakeAlertStore:
             triggered_at=at,
             resolved_at=None,
             last_seen_at=at,
+            acknowledged_at=None,
+            acknowledged_by=None,
         )
         self._next_id += 1
         self.rows.append(row)
@@ -89,6 +91,13 @@ class FakeAlertStore:
         # Returned, like AlertStore.resolve returns the closed alert. A caller
         # announcing the resolution needs the resolved row; the one it was
         # holding still says the alert is firing.
+        return row
+
+    def acknowledge(self, *, alert_id, username, at=None):
+        row = self._by_id(alert_id)
+        if row.acknowledged_at is None:
+            row.acknowledged_at = at
+            row.acknowledged_by = username
         return row
 
     def _by_id(self, alert_id):

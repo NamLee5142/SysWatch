@@ -148,6 +148,20 @@ class AlertRecord(Base):
         DateTime(timezone=True), nullable=True
     )
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Acknowledgement: somebody has seen this and is dealing with it.
+    #
+    # Columns on the alert rather than a table of their own. It is an attribute
+    # of the one alert - who, and when - and a join would buy nothing but a
+    # second thing to keep in step when an alert is deleted.
+    #
+    # The username is copied, not a foreign key to users.id. An alert is
+    # history, and history should stay readable after the account that made it
+    # is deleted - the same reason rule_name is copied onto the alert rather
+    # than joined from alert_rules.
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    acknowledged_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     __table_args__ = (
         # The "open alert for this host" lookup the engine runs every tick, and
