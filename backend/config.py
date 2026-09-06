@@ -93,6 +93,20 @@ class Settings(BaseSettings):
     # grant, and the one that does should have to say so.
     cors_origins: Annotated[list[str], NoDecode] = []
 
+    # --- alert delivery ------------------------------------------------------
+    #
+    # Every transport is off until configured. An alerting system that starts
+    # mailing strangers because a default pointed somewhere is worse than one
+    # that says nothing, and the log notifier means "nothing configured" still
+    # leaves a record.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    # Never logged, never repr'd. See app/alerts/smtp.py.
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_to: Annotated[list[str], NoDecode] = []
+
     model_config = SettingsConfigDict(
         env_prefix="SYSWATCH_",
         case_sensitive=False,
@@ -133,6 +147,16 @@ class Settings(BaseSettings):
     def split_cors_origins(cls, value):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    # Recipients take the same comma-separated spelling, for the same reason:
+    # a shell variable that has to be valid JSON is a shell variable people get
+    # wrong.
+    @field_validator("smtp_to", mode="before")
+    @classmethod
+    def split_smtp_to(cls, value):
+        if isinstance(value, str):
+            return [address.strip() for address in value.split(",") if address.strip()]
         return value
 
     @field_validator("cors_origins")

@@ -66,3 +66,59 @@ class LoggingNotifier(Notifier):
             alert.threshold,
             alert.severity,
         )
+
+
+class CompositeNotifier(Notifier):
+    """Deliver to several places, and let each fail on its own.
+
+    Isolated per notifier rather than per delivery: a mail server that is down
+    must not cost the log line as well. Without this, the engine's single
+    try/except would mean the first transport to raise silences every one
+    after it, and which ones those are would depend on list order.
+    """
+
+    def __init__(self, notifiers):
+        self._notifiers = list(notifiers)
+
+    def __repr__(self):
+        return f"CompositeNotifier({self._notifiers!r})"
+
+    def deliver(self, change, alert):
+        for notifier in self._notifiers:
+            try:
+                notifier.deliver(change, alert)
+            except Exception:
+                logger.warning(
+                    "Could not deliver an alert through %s",
+                    type(notifier).__name__,
+                    exc_info=True,
+                )
+
+
+def build_notifier(settings):
+    """The notifier the application uses, assembled from configuration.
+
+    The log notifier is always present: it costs nothing, and it means a
+    machine with no mail server still has a record of what fired somewhere an
+    operator already looks. Everything else is off until configured.
+    """
+    notifiers = [LoggingNotifier()]
+
+    if settings.smtp_host:
+        # Imported here rather than at module scope so that the module holding
+        # the password is not imported into every process that touches alerts.
+        from app.alerts.smtp import SmtpNotifier
+
+        notifiers.append(
+            SmtpNotifier(
+                host=settings.smtp_host,
+                port=settings.smtp_port,
+                username=settings.smtp_username,
+                password=settings.smtp_password,
+                sender=settings.smtp_from,
+                recipients=settings.smtp_to,
+            )
+        )
+
+    return CompositeNotifier(notifiers)
+
