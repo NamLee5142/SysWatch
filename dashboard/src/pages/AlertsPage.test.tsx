@@ -25,6 +25,9 @@ vi.mock('../api/client', async (importOriginal) => {
     createAlertRule: vi.fn(),
     updateAlertRule: vi.fn(),
     deleteAlertRule: vi.fn(),
+    acknowledgeAlert: vi.fn(),
+    silenceAlertRule: vi.fn(),
+    unsilenceAlertRule: vi.fn(),
   }
 })
 
@@ -42,6 +45,9 @@ function alert(overrides: Partial<Alert> = {}): Alert {
     value: 97.4,
     triggeredAt: new Date().toISOString(),
     resolvedAt: null,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    lastNotifiedAt: null,
     lastSeenAt: new Date().toISOString(),
     ...overrides,
   }
@@ -57,6 +63,7 @@ const RULE: AlertRule = {
   enabled: true,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
+  silencedUntil: null,
 }
 
 function neverSettles<T>(): Promise<T> {

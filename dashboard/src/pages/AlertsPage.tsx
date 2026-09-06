@@ -8,6 +8,9 @@ import {
   listAlertRules,
   updateAlertRule,
   type AlertRuleInput,
+  acknowledgeAlert,
+  silenceAlertRule,
+  unsilenceAlertRule,
 } from '../api/client'
 import type { Alert, AlertRule, Severity } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -29,10 +32,28 @@ const SEVERITY_CLASS: Record<Severity, string> = {
 }
 
 const ALERT_HEADERS = ['Severity', 'Alert', 'Host', 'Value', 'Threshold', 'Since', 'State']
-const RULE_HEADERS = ['Name', 'Metric', 'Condition', 'Severity', 'Enabled']
+// Only the active table offers the button, so only it needs the column. The
+// resolved table shows the acknowledgement without room to change it.
+const ACKNOWLEDGED_ALERT_HEADERS = [...ALERT_HEADERS, 'Acknowledged']
+const ACTIVE_ALERT_HEADERS = [...ACKNOWLEDGED_ALERT_HEADERS, '']
+const RULE_HEADERS = ['Name', 'Metric', 'Condition', 'Severity', 'Enabled', 'Silenced']
 const ADMIN_RULE_HEADERS = [...RULE_HEADERS, 'Actions']
 
-function alertRows(alerts: Alert[]): ReactNode {
+// What an operator actually reaches for: long enough to fix something, short
+// enough that forgetting to lift it is survivable.
+const SILENCE_OPTIONS = [
+  { minutes: 30, label: '30 minutes' },
+  { minutes: 60, label: '1 hour' },
+  { minutes: 240, label: '4 hours' },
+  { minutes: 1440, label: '24 hours' },
+]
+
+interface AlertActions {
+  busyId: number | null
+  onAcknowledge: (alert: Alert) => void
+}
+
+function alertRows(alerts: Alert[], actions?: AlertActions): ReactNode {
   return alerts.map((alert) => (
     <tr key={alert.id}>
       <td className={`${styles.severity} ${SEVERITY_CLASS[alert.severity]}`}>
@@ -46,6 +67,28 @@ function alertRows(alerts: Alert[]): ReactNode {
         <RelativeTime iso={alert.triggeredAt} />
       </td>
       <td className={styles.state}>{alert.state === 'firing' ? 'Firing' : 'Resolved'}</td>
+      <td className={styles.state}>
+        {alert.acknowledgedBy === null ? (
+          '—'
+        ) : (
+          <span title={`Acknowledged by ${alert.acknowledgedBy}`}>
+            {alert.acknowledgedBy}
+          </span>
+        )}
+      </td>
+      {actions && (
+        <td>
+          {alert.acknowledgedAt === null && (
+            <button
+              type="button"
+              onClick={() => actions.onAcknowledge(alert)}
+              disabled={actions.busyId === alert.id}
+            >
+              Acknowledge
+            </button>
+          )}
+        </td>
+      )}
     </tr>
   ))
 }
@@ -55,6 +98,15 @@ interface RuleActions {
   busyId: number | null
   onToggle: (rule: AlertRule) => void
   onDelete: (rule: AlertRule) => void
+  onSilence: (rule: AlertRule, minutes: number) => void
+  onUnsilence: (rule: AlertRule) => void
+}
+
+function isSilenced(rule: AlertRule): boolean {
+  // An expiry in the past is not a silence. The backend already ignores it;
+  // showing "Silenced" for a window that closed yesterday would be a lie the
+  // user has no way to correct.
+  return rule.silencedUntil !== null && new Date(rule.silencedUntil) > new Date()
 }
 
 function ruleRows(rules: AlertRule[], actions: RuleActions): ReactNode {
@@ -67,6 +119,9 @@ function ruleRows(rules: AlertRule[], actions: RuleActions): ReactNode {
         {SEVERITY_LABEL[rule.severity]}
       </td>
       <td className={styles.state}>{rule.enabled ? 'Yes' : 'No'}</td>
+      <td className={styles.state}>
+        {isSilenced(rule) ? <RelativeTime iso={rule.silencedUntil as string} /> : '—'}
+      </td>
       {actions.isAdmin && (
         <td>
           <span className={styles.rowActions}>
@@ -77,6 +132,33 @@ function ruleRows(rules: AlertRule[], actions: RuleActions): ReactNode {
             >
               {rule.enabled ? 'Disable' : 'Enable'}
             </button>
+            {isSilenced(rule) ? (
+              <button
+                type="button"
+                onClick={() => actions.onUnsilence(rule)}
+                disabled={actions.busyId === rule.id}
+              >
+                Unsilence
+              </button>
+            ) : (
+              <select
+                aria-label={`Silence ${rule.name}`}
+                value=""
+                disabled={actions.busyId === rule.id}
+                onChange={(event) => {
+                  actions.onSilence(rule, Number(event.target.value))
+                }}
+              >
+                <option value="" disabled>
+                  Silence
+                </option>
+                {SILENCE_OPTIONS.map((option) => (
+                  <option key={option.minutes} value={option.minutes}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               className={styles.danger}
@@ -227,6 +309,30 @@ export function AlertsPage() {
     void mutate(rule.id, () => updateAlertRule(rule.id, { enabled: !rule.enabled }))
   }
 
+  function handleSilence(rule: AlertRule, minutes: number) {
+    void mutate(rule.id, () => silenceAlertRule(rule.id, minutes))
+  }
+
+  function handleUnsilence(rule: AlertRule) {
+    void mutate(rule.id, () => unsilenceAlertRule(rule.id))
+  }
+
+  // Acknowledging refetches the active list rather than the rules, so it gets
+  // its own path through the same shape: one flag, one error, one refetch.
+  async function handleAcknowledge(alert: Alert) {
+    setRuleError(null)
+    setBusyId(alert.id)
+
+    try {
+      await acknowledgeAlert(alert.id)
+      await active.refetch()
+    } catch (cause) {
+      setRuleError(describeRuleError(cause))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   function handleDelete(rule: AlertRule) {
     // Deleting a rule also orphans its alert history, so this asks first.
     if (!window.confirm(`Delete the rule "${rule.name}"?`)) {
@@ -242,19 +348,28 @@ export function AlertsPage() {
       <TableSection
         title="Active"
         meta={active.data ? active.data.items.length : undefined}
-        headers={ALERT_HEADERS}
+        headers={ACTIVE_ALERT_HEADERS}
         loadingLabel="Loading active alerts"
         errorText="Unable to load active alerts."
         emptyText="No active alerts."
         hasData={Boolean(active.data)}
         isEmpty={active.data?.items.length === 0}
-        rows={active.data ? alertRows(active.data.items) : null}
+        rows={
+          active.data
+            ? alertRows(active.data.items, {
+                busyId,
+                // Any signed-in user, not admins only: acknowledging is the
+                // person on shift saying they have seen it.
+                onAcknowledge: handleAcknowledge,
+              })
+            : null
+        }
         error={active.error}
       />
 
       <TableSection
         title="Recently resolved"
-        headers={ALERT_HEADERS}
+        headers={ACKNOWLEDGED_ALERT_HEADERS}
         loadingLabel="Loading resolved alerts"
         errorText="Unable to load resolved alerts."
         emptyText="No resolved alerts yet."
@@ -279,6 +394,8 @@ export function AlertsPage() {
                 busyId,
                 onToggle: handleToggle,
                 onDelete: handleDelete,
+                onSilence: handleSilence,
+                onUnsilence: handleUnsilence,
               })
             : null
         }
