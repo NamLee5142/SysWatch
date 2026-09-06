@@ -35,9 +35,30 @@ AGENT_SNAPSHOT_URL = f"{get_settings().agent_base_url}/snapshot"
 
 WEBHOOK_URL = "https://hooks.example.test/T0/B0/S3CR3T"
 
-# Nothing listens here. A real connection attempt, not a stub, so the SMTP
-# transport takes the same code path an operator's dead mail server would.
+# Nothing listens here. One test connects for real, so the SMTP transport takes
+# the same code path an operator's dead mail server would - including the OS
+# behaviour, which turned out to matter: a refused connection to a closed port
+# on Windows loopback costs about two seconds, not milliseconds.
+#
+# That fidelity is worth paying for once. The rest of these tests are about
+# what the poller and the engine do when delivery fails, not about sockets, so
+# they raise the same error without waiting for the TCP stack to give up.
 DEAD_SMTP_PORT = 59_999
+
+
+class RefusingSmtp:
+    """smtplib.SMTP, failing the way a dead mail server does, immediately."""
+
+    def __init__(self, host, port, timeout=None):
+        raise ConnectionRefusedError(
+            "[WinError 10061] No connection could be made because the target "
+            "machine actively refused it"
+        )
+
+
+@pytest.fixture
+def instant_smtp_refusal(monkeypatch):
+    monkeypatch.setattr("app.alerts.smtp.smtplib.SMTP", RefusingSmtp)
 
 
 def payload(cpu, minute):
@@ -70,6 +91,22 @@ def temp_database(tmp_path):
     yield
 
     db_session.dispose_engine()
+
+
+@pytest.fixture
+def one_rule():
+    """A single rule, for the test that pays two real seconds per connection."""
+    from app.models.alert import AlertRuleCreate
+
+    return AlertRuleStore().create(
+        AlertRuleCreate(
+            name="CPU usage high",
+            metric="cpu",
+            operator="gt",
+            threshold=80.0,
+            severity="critical",
+        )
+    )
 
 
 @pytest.fixture
@@ -154,7 +191,8 @@ def run_poller(notifier, ticks=3, cpu_values=(95.0, 95.0, 5.0), until=None):
 # --- each transport, failing on its own -------------------------------------
 
 
-def test_a_dead_mail_server_does_not_stop_collection(seeded_rules, caplog):
+def test_a_dead_mail_server_does_not_stop_collection(one_rule, caplog):
+    """The one test that really connects, and really waits for the refusal."""
     notifier = build_notifier(
         Settings(
             smtp_host="127.0.0.1",
@@ -196,7 +234,9 @@ def test_a_notifier_that_raises_does_not_stop_collection(seeded_rules):
 
 
 @respx.mock
-def test_alerts_still_open_and_resolve_with_every_transport_broken(seeded_rules):
+def test_alerts_still_open_and_resolve_with_every_transport_broken(
+    seeded_rules, instant_smtp_refusal
+):
     """The plan's acceptance condition.
 
     Mail refused, webhook timing out, and a notifier raising outright - and the

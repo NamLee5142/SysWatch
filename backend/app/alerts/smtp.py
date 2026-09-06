@@ -16,16 +16,22 @@ from email.message import EmailMessage
 
 from app.alerts.notifier import OPENED, Notifier
 
-# Bounded, because deliver() runs on the poller's thread: the engine evaluates,
-# announces, and only then returns to collecting. A mail server that accepts a
-# connection and then stops talking would otherwise stall collection
-# indefinitely. Ten seconds is long enough for a slow relay and short enough
-# that one missed poll is the whole cost.
+# Bounded, because deliver() runs on the poll path: the loop awaits alert
+# evaluation, evaluation announces, and only then does it go back to
+# collecting. A mail server that accepts a connection and then stops talking
+# would otherwise stall collection indefinitely.
 #
-# State changes are rare - a rule that fires and clears once an hour costs two
-# of these - so the poll path is not paying this on every tick. If that ever
-# stops being true, delivery belongs on its own thread rather than on a longer
-# timeout.
+# The timeout is not the whole cost, and measuring changed the picture. A
+# refused connection to a closed port on Windows loopback takes about two
+# seconds - the TCP stack retries rather than failing on the first RST - and
+# that is paid per state change, not per outage. Two rules opening and later
+# resolving against a dead mail server is four connections and roughly eight
+# seconds of delayed collection.
+#
+# Tolerable at one host with a handful of rules, and the first thing that
+# should move off the poll path when it stops being: delivery belongs on its
+# own queue, not on a shorter timeout, because the cost here is the connection
+# attempt rather than the wait for a reply.
 TIMEOUT_SECONDS = 10
 
 
