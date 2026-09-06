@@ -12,3 +12,9 @@
 
 pytest==9.1.1
 respx==0.23.0
+
+# test_workflows.py reads .github/workflows. uvicorn[standard] happens to pull
+# PyYAML in as well, which is exactly why it is named here: a test that relies
+# on another package's extra breaks the day that extra changes, and the
+# breakage looks like a test failure rather than a missing dependency.
+pyyaml==6.0.3
