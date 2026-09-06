@@ -82,10 +82,13 @@ to `%PROGRAMDATA%\SysWatch\logs\agent.log`, rotating at 2 MB with three kept,
 appending across restarts so the line before a restart survives.
 
 ```text
-2026-09-04 17:19:23,034 INFO agent: Agent starting, version 0.10.0
-2026-09-04 17:19:23,036 INFO agent: Listening on 127.0.0.1:8080
-2026-09-04 17:19:23,036 INFO agent: Collecting every 2000ms
+2026-09-04T10:19:23.034Z INFO agent: Agent starting, version 0.10.0
+2026-09-04T10:19:23.036Z INFO agent: Listening on 127.0.0.1:8080
+2026-09-04T10:19:23.036Z INFO agent: Collecting every 2000ms
 ```
+
+Times are UTC, in the same ISO 8601 shape the API serves `collectedAt` in, so a
+log line and the snapshot it describes can be compared without arithmetic.
 
 The version comes from the repository's `VERSION` file, read by CMake at
 configure time, so a log from a machine in the field names the build that wrote

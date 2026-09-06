@@ -20,24 +20,31 @@ const char *levelName(Level level) {
     }
 }
 
-// Same shape as the backend's format, so the two logs read alike when someone
-// has both open.
+// ISO 8601, in UTC, with the offset spelled out. Same shape as the backend's
+// format, so the two logs read alike when someone has both open - and so a log
+// line can be compared directly with the collectedAt of the snapshot it
+// describes, which has always been UTC.
+//
+// UTC rather than local because a support bundle is read somewhere other than
+// where it was written, and because the two halves of this system must agree:
+// an agent logging local time and a backend logging UTC put the same instant
+// seven hours apart on the machine this was found on.
 std::string timestamp() {
     const auto now = std::chrono::system_clock::now();
     const auto seconds = std::chrono::system_clock::to_time_t(now);
     const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
                             now.time_since_epoch()) % 1000;
 
-    std::tm local{};
+    std::tm utc{};
 #if defined(_WIN32)
-    localtime_s(&local, &seconds);
+    gmtime_s(&utc, &seconds);
 #else
-    localtime_r(&seconds, &local);
+    gmtime_r(&seconds, &utc);
 #endif
 
     std::ostringstream out;
-    out << std::put_time(&local, "%Y-%m-%d %H:%M:%S") << ','
-        << std::setw(3) << std::setfill('0') << millis.count();
+    out << std::put_time(&utc, "%Y-%m-%dT%H:%M:%S") << '.'
+        << std::setw(3) << std::setfill('0') << millis.count() << 'Z';
     return out.str();
 }
 

@@ -300,7 +300,18 @@ outage lengthens, and a recovery is logged when polling succeeds again.
 | `logs\syswatch.log` | the backend | 5 MB, five kept |
 | `logs\agent.log` | the agent service | 2 MB, three kept |
 
-Both append across restarts, so the line before a restart is still there.
+Both append across restarts, so the line before a restart is still there, and
+both stamp their lines in UTC:
+
+```text
+2026-09-06T04:18:16.169Z INFO app.services.snapshot_poller: Polling every 10s
+```
+
+That is the same ISO 8601 shape the API serves `collectedAt` in. A log line and
+the snapshot it describes name the same instant, spelled the same way, so
+correlating them is a string comparison rather than timezone arithmetic - and a
+bundle collected from a machine in another timezone still reads against one
+clock.
 
 `SYSWATCH_LOG_LEVEL` takes `DEBUG`, `INFO`, `WARNING` or `ERROR`. Successful
 per-request chatter is held at `WARNING` deliberately: uvicorn's access log and

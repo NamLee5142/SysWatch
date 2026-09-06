@@ -10,12 +10,38 @@ enforces it by logging in and then grepping the file.
 """
 import logging
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from config import get_settings
 
-FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+# ISO 8601, in UTC, with the offset spelled out.
+#
+# Not a style preference. Everything this application stores is UTC - the
+# database columns, the API's collectedAt, the alert timestamps - and the log
+# was the one thing writing local time. On a machine seven hours off UTC the
+# same instant appeared twice with a seven-hour gap between the two spellings,
+# and correlating a log line with the snapshot it describes meant doing the
+# arithmetic in your head, during an incident. It misled the author of this
+# comment with both values on screen.
+#
+# The shape matches what the API serves, so a log line and a collectedAt can be
+# compared by eye or by grep.
+FORMAT = "%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s: %(message)s"
+DATE_FORMAT = "%Y-%m-%dT%H:%M:%S"
+
+
+class UtcFormatter(logging.Formatter):
+    """logging.Formatter, but the clock is UTC.
+
+    logging uses time.localtime by default and offers no setting for this; the
+    converter is the documented way to change it.
+    """
+
+    converter = time.gmtime
+
+
 LOG_FILE_NAME = "syswatch.log"
 
 # 5 MB before rolling, five kept: enough to cover the run-up to an incident on
@@ -37,7 +63,7 @@ def _remove_our_handlers(root):
 
 def _mark(handler):
     setattr(handler, _OURS, True)
-    handler.setFormatter(logging.Formatter(FORMAT))
+    handler.setFormatter(UtcFormatter(FORMAT, datefmt=DATE_FORMAT))
     return handler
 
 
