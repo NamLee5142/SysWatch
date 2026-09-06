@@ -208,3 +208,39 @@ Windows install, and containers are a different deployment story that would
 want PostgreSQL first.
 
 ---
+
+# Releases
+
+One tag per release, each on the merge that ended its sprint.
+
+| Tag | Commit | Merged |
+| --- | --- | --- |
+| `v0.1.0` | `1417dd7` | system collector |
+| `v0.2.0` | `42bedaf` | agent |
+| `v0.3.0` | `24a7152` | HTTP server |
+| `v0.4.0` | `3953e2c` | Python backend |
+| `v0.5.0` | `8200353` | database integration |
+| `v0.6.0` | `ff83b7f` | dashboard |
+| `v0.7.0` | `8619103` | process and network monitoring |
+| `v0.8.0` | `daba028` | alert engine |
+| `v0.9.0` | `6a28b03` | security and authentication |
+| `v0.10.0` | `8c0309a` | production hardening |
+
+This table exists because the tags were wrong for a month and nothing said so.
+
+The first five releases were tagged `v.0.5.0`, with a stray dot. Correcting the
+spelling later meant re-tagging, and re-tagging in one pass names whatever is
+checked out - so `v0.5.0` through `v0.9.0` all landed on the tip of `main` at
+that moment, the sprint 9 merge, rather than on the commit each release was
+actually cut from. The dotted tags were the ones still pointing at the right
+commits, which made them look like the mistake.
+
+`git tag v0.6.0 <commit>` takes the commit for exactly this reason; without it,
+where a release came from is recoverable only by reading `git log` and guessing,
+which is not where you want to be during an incident on a version you no longer
+build.
+
+Tagging a release is two claims, and the table checks both: the version
+increases, and so does the date.
+
+---
