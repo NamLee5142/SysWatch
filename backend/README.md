@@ -31,10 +31,16 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 source .venv/bin/activate       # Linux / macOS
-pip install -r requirements.txt
+pip install -r requirements-dev.txt      # requirements.txt plus the test suite
 alembic upgrade head                    # create the database schema
 python -m app.auth.create_admin         # create the first account
 ```
+
+`requirements.txt` is what the application needs and what
+`deploy/Install-SysWatch.ps1` installs on a monitored machine;
+`requirements-dev.txt` includes it and adds the test suite's own dependencies.
+A deployment therefore carries no test framework, and the release archive does
+not ship the development file at all.
 
 Neither of the last two steps is optional. The application does not create
 tables on startup, so without the migration every poll fails into a logged
