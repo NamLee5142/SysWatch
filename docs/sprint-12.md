@@ -73,8 +73,16 @@ and each one is answered here so that implementation is not also negotiation.
 ### Phase A — The backend can receive (commits 1–6)
 
 **1. `feat: agent tokens`**
-A table, a store, and Argon2 hashing reusing `app/auth/password.py`. Columns:
-`host_name`, `token_hash`, `created_at`, `last_seen_at`, `enabled`.
+A table, a store, and HMAC-SHA256 hashing in the shape of `app/auth/session.py`.
+Columns: `host_name`, `token_hash`, `created_at`, `last_seen_at`, `enabled`.
+
+*Corrected while implementing:* this said Argon2, reusing `password.py`. Wrong
+primitive. A password is low-entropy and verified once at login, so it is worth
+40 ms and 64 MiB to store; an agent token is 256 random bits verified on every
+push, and Argon2 there lets an unauthenticated caller force that work per
+request against the ingestion endpoint - a denial-of-service amplifier in front
+of authentication. Hashing under the deployment secret, with a domain separator
+so an agent token and a session token can never hash alike.
 *Watch out:* the token is shown once at creation and never again, like every
 other credential this project issues.
 *Done when:* a token can be created, verified and disabled, and the plaintext
@@ -83,7 +91,8 @@ appears in no table.
 **2. `feat: create an agent token from the command line`**
 `python -m app.auth.create_agent_token --host <name>`, in the shape of
 `create_admin`. Prints the token once, to stdout, with no `--token` flag to
-supply one.
+supply one. `--list`, `--revoke` and `--restore` alongside it: the definition of
+done says a token is revocable, and no other interface offers that.
 *Done when:* the token never reaches shell history, a log, or the process list.
 
 **3. `feat: authenticate a request as an agent`**
