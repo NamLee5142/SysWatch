@@ -9,7 +9,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import logging_config as app_logging
 from app.alerts import AlertEngine
 from app.alerts.notifier import build_notifier, verify_notification_configuration
-from app.api import alert_rules, alerts, auth, health, hosts, snapshot, snapshots, status
+from app.api import (
+    alert_rules,
+    alerts,
+    auth,
+    health,
+    hosts,
+    ingest,
+    snapshot,
+    snapshots,
+    status,
+)
 from app.auth.dependencies import require_authenticated_user
 from app.client import AgentClient
 from app.db import dispose_engine, init_engine
@@ -209,6 +219,12 @@ def create_app() -> FastAPI:
     # Applied per router rather than as middleware so the dependency tree is
     # the policy: a new router is unprotected only if someone leaves it out of
     # this list on purpose.
+    # Not in the protected list below, and not unprotected either: every route
+    # on it carries require_agent, which authenticates a bearer token rather
+    # than a session cookie. Adding the session dependency here would demand a
+    # cookie an unattended service has no way to obtain.
+    app.include_router(ingest.router, prefix=API_PREFIX)
+
     protected = [Depends(require_authenticated_user)]
 
     app.include_router(status.router, prefix=API_PREFIX, dependencies=protected)
