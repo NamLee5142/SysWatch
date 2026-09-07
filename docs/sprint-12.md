@@ -115,6 +115,17 @@ The security property of commit 4, tested directly rather than implied.
 *Done when:* a token for host A posting a payload claiming host B writes a row
 for A.
 
+*Folded into commit 4.* `test_the_host_comes_from_the_token_not_the_payload`
+and `test_another_hosts_token_cannot_overwrite_a_row` were written there, and
+both were checked against a mutation that trusts the payload. A separate commit
+would have added a name, not a test.
+
+*What it missed:* forging the *row* is only half. `AlertEngine.evaluate` also
+took the host from `snapshot.systemInfo.hostName`, so a pushed snapshot would
+have been stored under the credential's host and alerted under whatever name it
+claimed - one agent opening and resolving another machine's alerts while its
+own rows went elsewhere. Found and fixed in commit 6.
+
 **6. `feat: alerts evaluate on ingestion`**
 Today evaluation runs after a successful poll. A pushed snapshot must reach the
 same engine, or a remote host is monitored and never alerts.

@@ -32,23 +32,38 @@ from app.services.snapshot_service import SnapshotService
 from config import ensure_data_dir, get_settings
 
 
-def create_poller(settings):
+def create_alert_engine(settings):
+    """The alert engine, or None when SYSWATCH_ALERTS_ENABLED is false.
+
+    One engine for the whole process, shared by the poller and by the ingestion
+    endpoint. Building a second would mean a second set of notifiers, so a
+    reminder interval would be tracked per engine and an alert could be
+    announced once per path.
+
+    Sharing it is safe: the engine holds its collaborators and nothing else -
+    no counters, no caches, no per-evaluation state - and each store opens its
+    own session. Concurrency lives in the database, where the unique constraint
+    on an open alert already settles it.
+    """
+    if not settings.alerts_enabled:
+        return None
+
+    return AlertEngine(
+        AlertRuleStore(),
+        AlertStore(),
+        notifier=build_notifier(settings),
+        repeat_after=(
+            timedelta(hours=settings.notify_repeat_hours)
+            if settings.notify_repeat_hours
+            else None
+        ),
+    )
+
+
+def create_poller(settings, engine=None):
     """Build the poller that collects snapshots whether or not anyone is asking."""
     store = SnapshotStore()
     service = SnapshotService(client=AgentClient(settings.agent_base_url), store=store)
-
-    engine = None
-    if settings.alerts_enabled:
-        engine = AlertEngine(
-            AlertRuleStore(),
-            AlertStore(),
-            notifier=build_notifier(settings),
-            repeat_after=(
-                timedelta(hours=settings.notify_repeat_hours)
-                if settings.notify_repeat_hours
-                else None
-            ),
-        )
 
     return SnapshotPoller(
         service,
@@ -124,7 +139,19 @@ async def lifespan(app: FastAPI):
     # encourage.
     init_engine()
 
-    poller = create_poller(settings) if settings.polling_enabled else None
+    # Built before the poller, and shared with it. The ingestion endpoint reads
+    # this off app.state, so a pushed snapshot is evaluated by the same engine
+    # and the same notifiers as a polled one - a remote host that is monitored
+    # and never alerts would be a worse outcome than one that is not monitored
+    # at all, because the dashboard would show it as fine.
+    alert_engine = create_alert_engine(settings)
+    app.state.alert_engine = alert_engine
+
+    poller = (
+        create_poller(settings, engine=alert_engine)
+        if settings.polling_enabled
+        else None
+    )
     if poller is not None:
         poller.start()
     else:

@@ -41,14 +41,25 @@ class AlertEngine:
         # default anyone should get by accident.
         self._repeat_after = repeat_after
 
-    def evaluate(self, snapshot) -> EvaluationSummary:
+    def evaluate(self, snapshot, host_name=None) -> EvaluationSummary:
         """Evaluate every enabled rule against one snapshot and persist the result.
 
         One firing alert per (rule, host) at a time: a violation with no open
         alert opens one, a violation with an open alert updates it in place
         (no new row every tick), and a return to normal resolves it.
+
+        host_name overrides the name inside the payload, for the same reason
+        SnapshotStore.save takes one: on the ingestion path the payload is
+        written by the machine being identified. Without it a pushed snapshot
+        would be *stored* under the credential's host and *alerted* under
+        whatever hostname it claimed - so one agent could open and resolve
+        another machine's alerts while its own rows went elsewhere, which is a
+        stranger failure than either half alone.
+
+        The poller leaves it None: it fetched the snapshot from an agent it was
+        configured to reach, so the two names are the same by construction.
         """
-        host_name = snapshot.systemInfo.hostName
+        host_name = host_name or snapshot.systemInfo.hostName
         # The alert is stamped with when the metrics were collected, not when
         # this ran — the same choice the snapshot row makes, and it keeps the
         # engine deterministic to test.

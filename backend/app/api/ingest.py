@@ -7,7 +7,7 @@ push rather than being polled.
 """
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from app.auth.dependencies import require_agent
 from app.models.auth import CurrentAgent
@@ -37,6 +37,7 @@ def create_snapshot_store() -> SnapshotStore:
     },
 )
 def ingest_snapshot(
+    request: Request,
     snapshot: Snapshot,
     agent: CurrentAgent = Depends(require_agent),
 ):
@@ -67,4 +68,41 @@ def ingest_snapshot(
             agent.host_name,
         )
 
+    if stored is not None:
+        evaluate_alerts(request, snapshot, agent.host_name)
+
     return IngestResult(hostName=agent.host_name, stored=stored is not None)
+
+
+def evaluate_alerts(request, snapshot, host_name):
+    """Run the alert engine over a pushed snapshot, and never fail because of it.
+
+    The same rule the poller holds to: alerting is a side effect of collection
+    and must never be the reason it stops. Here that means the agent gets its
+    202 whether or not a mail server answered - an agent that retried because
+    delivery failed would push the same reading forever, and each retry would
+    try to deliver again.
+
+    Already off the event loop: this route is a sync def, so FastAPI is running
+    it in a threadpool worker, which is where the poller deliberately puts the
+    same call.
+
+    Skipped for a duplicate, which is an efficiency rather than a correctness
+    matter and is worth stating as such: a retried push carries the same
+    collectedAt and the same values, so re-evaluating it would reach the same
+    conclusions and write the same numbers. What it would cost is a full pass
+    over every enabled rule, plus a touch() per open alert, per retry - and an
+    agent retries exactly when the backend is already having a bad time.
+    """
+    engine = getattr(request.app.state, "alert_engine", None)
+    if engine is None:
+        return
+
+    try:
+        engine.evaluate(snapshot, host_name=host_name)
+    except Exception:
+        logger.warning(
+            "Alert evaluation failed for a snapshot pushed by %r",
+            host_name,
+            exc_info=True,
+        )
