@@ -112,10 +112,18 @@ def configure_logging(settings=None):
     #
     # It has since acquired a second job. httpx logs the full URL of every
     # request, and a webhook URL is usually a credential - Slack, Discord and
-    # Teams all put a token in the path. So this line is what keeps that token
-    # out of the log file, and lowering it to debug a request publishes the
-    # token as well. See app/alerts/webhook.py.
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # Teams all put a token in the path. So these lines are what keep that
+    # token out of the log file, and lowering either to debug a request
+    # publishes the token as well. See app/alerts/webhook.py.
+    #
+    # httpcore is httpx's transport, and a separate logger. Silencing httpx
+    # alone left it writing connect_tcp.started host=... port=... for every
+    # request at DEBUG. It never logs the path, so the token itself was never
+    # exposed - but that was a property of somebody else's library rather than
+    # anything enforced here, and a version of it that logged the full URL
+    # would have published the token without changing a line of this file.
+    for chatty in ("httpx", "httpcore"):
+        logging.getLogger(chatty).setLevel(logging.WARNING)
 
     return log_file
 
