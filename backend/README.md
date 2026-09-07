@@ -510,6 +510,33 @@ itself), `user_id` (FK → `users.id`, `ON DELETE CASCADE`), `expires_at`,
 The cascade matters: a session that resolves to nobody would be a row the auth
 dependency has to defend against for no reason.
 
+### `agent_tokens`
+
+`id`, `host_name` (indexed, **not** unique), `token_hash` (unique — `HMAC-SHA256`
+of the token, never the token itself), `description`, `created_at`,
+`last_seen_at` (null until first use), `enabled`.
+
+The credential a remote agent presents when it pushes a snapshot. Three
+decisions are worth knowing:
+
+**`host_name` is the host identity.** A snapshot is filed under the host its
+token names, not under the `hostName` inside the payload — that value is
+self-reported, and trusting it would let one compromised agent overwrite any
+other machine's history.
+
+**`host_name` is not unique**, so a host can hold two tokens at once. Rotating
+means issuing the new one, deploying it, and only then disabling the old; a
+unique constraint would forbid that overlap and leave "delete the row and hope
+the deploy lands before the next push".
+
+**The hash is HMAC-SHA256, not Argon2**, unlike `users.password_hash`. A
+password is low-entropy and verified once at login, so it is worth 40 ms and
+64 MiB to store. A token is 256 random bits verified on *every push*, and
+Argon2 there would let an unauthenticated caller force that work per request
+against the ingestion endpoint. See `app/auth/agent_token.py`, which also
+explains the domain separator that keeps an agent token and a session token
+from ever hashing alike under the same secret.
+
 ### Migrations
 
 ```bash
