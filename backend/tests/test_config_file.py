@@ -6,6 +6,8 @@ for one run should not have to edit that file.
 """
 from pathlib import Path
 
+import re
+
 import pytest
 
 from config import (
@@ -127,6 +129,47 @@ def test_the_example_exists_and_is_all_comments():
     # default with an empty list.
     assert lines
     assert all(line.startswith("#") for line in lines)
+
+
+@pytest.mark.parametrize("field", sorted(Settings.model_fields))
+def test_every_setting_appears_in_the_example(field):
+    """The installer ships this file as the machine's configuration.
+
+    A setting documented only in README.md is a setting an operator never finds:
+    they open syswatch.env, not the repository. Sprint 11 added nine
+    notification settings, documented them in two READMEs, and left this file
+    describing a version of the application that could not send an alert - which
+    no other test noticed, because the ones above only check that the file is
+    all comments and carries no secret.
+
+    Parametrized rather than a set comparison so the failure names the setting
+    that is missing instead of printing a diff of twenty-six.
+    """
+    name = f"SYSWATCH_{field.upper()}"
+
+    assert name in EXAMPLE.read_text(encoding="utf-8"), (
+        f"{name} is not in syswatch.env.example. Add it, commented out, in the "
+        "section it belongs to."
+    )
+
+
+def test_the_example_invents_no_settings():
+    """The other direction: a name here that config.py does not read.
+
+    A typo, or a setting that was renamed and left behind. Either way an
+    operator sets it and nothing happens.
+    """
+    known = {f"SYSWATCH_{field.upper()}" for field in Settings.model_fields}
+    # The variable that names this file is read before Settings exists, so it is
+    # not a field, and it is the one name legitimately here that config.py does
+    # not declare.
+    known.add(CONFIG_FILE_VAR)
+
+    found = set(
+        re.findall(r"^#?(SYSWATCH_[A-Z0-9_]+)=", EXAMPLE.read_text(encoding="utf-8"), re.M)
+    )
+
+    assert found <= known, f"not read by config.py: {sorted(found - known)}"
 
 
 def test_the_example_carries_no_secret():

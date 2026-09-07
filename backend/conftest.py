@@ -146,15 +146,31 @@ def pytest_configure(config):
         "markers",
         "sqlite_only: a fact about SQLite rather than about this application",
     )
+    config.addinivalue_line(
+        "markers",
+        "windows_only: a fact about Windows paths rather than about this application",
+    )
 
 
 def pytest_collection_modifyitems(items):
-    """Skip the SQLite-specific tests when pointed at another engine.
+    """Skip tests whose subject is not present on this platform or engine.
 
-    A short list, and each entry is deliberate: what is being asserted is a
-    property of SQLite that the application is built around, so the test is
-    worth keeping and is not worth generalising.
+    Both lists are short, and each entry is deliberate: what is being asserted
+    is a property of SQLite, or of Windows paths, that the application is built
+    around. The tests are worth keeping and are not worth generalising - a
+    Windows path assertion rewritten to pass on Linux would assert nothing.
+
+    Only one CI job is affected. The suite runs on windows-latest against
+    SQLite, which is what ships; the PostgreSQL job runs on ubuntu-latest
+    because GitHub does not offer service containers on Windows agents, and it
+    is the reason the platform half of this exists at all.
     """
+    if os.name != "nt":
+        skip_platform = pytest.mark.skip(reason="asserts Windows path behaviour")
+        for item in items:
+            if "windows_only" in item.keywords:
+                item.add_marker(skip_platform)
+
     if TEST_DATABASE_URL.startswith("sqlite"):
         return
 

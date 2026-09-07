@@ -11,6 +11,18 @@ from app.repositories import AlertRuleStore
 NOW = datetime.now(timezone.utc)
 
 
+def parse_api_time(value):
+    """Read a timestamp the way the API serves it.
+
+    The API spells UTC with a trailing Z. datetime.fromisoformat did not accept
+    that until Python 3.11, and the installer accepts 3.10 - so the plain call
+    raises "Invalid isoformat string" on the oldest interpreter this project
+    supports, and only there. Substituting the offset it stands for parses on
+    every version.
+    """
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
 class Recorder(Notifier):
     def __init__(self):
         self.delivered = []
@@ -173,7 +185,7 @@ def test_silencing_takes_a_duration(admin_client, a_rule):
     )
 
     assert response.status_code == 200
-    until = datetime.fromisoformat(response.json()["silencedUntil"])
+    until = parse_api_time(response.json()["silencedUntil"])
     assert timedelta(minutes=88) < until - NOW < timedelta(minutes=92)
 
 
