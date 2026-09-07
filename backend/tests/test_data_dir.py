@@ -58,7 +58,16 @@ def test_naming_one_directory_moves_everything(clean_env, tmp_path):
     assert settings.log_dir == str(tmp_path / "logs")
 
 
+@pytest.mark.windows_only
 def test_the_database_url_uses_forward_slashes(clean_env):
+    r"""Windows only, because a backslash is only a separator on Windows.
+
+    On POSIX, Path(r"D:\SysWatch Data") is a single filename that happens to
+    contain a backslash, and as_posix() leaves it exactly as it is - so the
+    assertion below cannot hold, and rewriting it so it could would leave it
+    asserting nothing. The behaviour under test is real and belongs to the
+    platform that ships.
+    """
     clean_env.setenv(DATA_DIR_VAR, r"D:\SysWatch Data")
 
     # A Windows path in a sqlite:/// URL has to use forward slashes, or

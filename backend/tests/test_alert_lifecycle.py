@@ -10,8 +10,6 @@ from types import SimpleNamespace
 import pytest
 
 from app.alerts.engine import AlertEngine
-from app.db import session as db_session
-from app.db.models import Base
 from app.models.snapshot import Snapshot
 from app.repositories import AlertRuleStore, AlertStore
 
@@ -19,20 +17,14 @@ BASE_TIME = datetime(2026, 8, 12, 11, 15, 27, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def context():
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
+def context(database):
     rules = AlertRuleStore()
     alerts = AlertStore()
-    yield SimpleNamespace(
+    return SimpleNamespace(
         rules=rules,
         alerts=alerts,
         engine=AlertEngine(rules, alerts),
     )
-
-    db_session.dispose_engine()
 
 
 def new_rule(name="CPU high", metric="cpu", operator="gt", threshold=90.0,

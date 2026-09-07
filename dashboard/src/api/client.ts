@@ -284,6 +284,22 @@ export function deleteAlertRule(id: number, signal?: AbortSignal): Promise<void>
   return request<void>(`/alert-rules/${id}`, { method: 'DELETE', signal })
 }
 
+export function acknowledgeAlert(id: number, signal?: AbortSignal) {
+  return request<Alert>(`/alerts/${id}/acknowledge`, { method: 'POST', signal })
+}
+
+export function silenceAlertRule(id: number, minutes: number, signal?: AbortSignal) {
+  return request<AlertRule>(`/alert-rules/${id}/silence`, {
+    method: 'POST',
+    body: { minutes },
+    signal,
+  })
+}
+
+export function unsilenceAlertRule(id: number, signal?: AbortSignal) {
+  return request<AlertRule>(`/alert-rules/${id}/silence`, { method: 'DELETE', signal })
+}
+
 
 export function login(username: string, password: string, signal?: AbortSignal): Promise<CurrentUser> {
   return request<CurrentUser>('/auth/login', {

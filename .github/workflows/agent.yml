@@ -3,8 +3,17 @@ name: Agent
 # The agent is Win32 - Service Control Manager, PDH, iphlpapi, psapi - so a
 # Linux runner cannot build it, let alone run its tests.
 on:
+  # main only. A branch with an open pull request was running every suite
+  # twice - once for the push, once for the pull_request - on the same commit,
+  # producing two identical green ticks and paying for both. The pull request
+  # run is the one that gates a merge, so it is the one that stays.
+  #
+  # The cost is that a push to a branch with no pull request open runs nothing.
+  # install.yml has always worked that way. Two ways to get a run without
+  # merging: open the pull request early, as a draft, or use Run workflow on
+  # the Actions tab, which is what workflow_dispatch below is for.
   push:
-    branches: ["**"]
+    branches: [main]
     paths:
       - "agent/**"
       - "VERSION"

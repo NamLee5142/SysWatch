@@ -53,6 +53,28 @@ def _configure_sqlite(engine):
         cursor.close()
 
 
+def _configure_postgresql(engine):
+    """Pin every connection to UTC.
+
+    The same job as the pragmas above, for the engine the CI suite runs
+    against. to_storage_time() hands the driver a naive datetime, because
+    SQLite has no timezone type and would drop the offset anyway. A server
+    does not drop it - it supplies one, and the one it supplies is whatever
+    the session's TimeZone happens to be. On a machine set to Asia/Ho_Chi_Minh
+    every stored instant came back seven hours out, and every test still
+    passed on the CI container because that container is UTC.
+
+    "The database stores UTC" was already true everywhere else in this
+    application. This is what makes it true here rather than incidental.
+    """
+
+    @event.listens_for(engine, "connect")
+    def _set_utc(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET TIME ZONE 'UTC'")
+        cursor.close()
+
+
 def init_engine(database_url=None):
     """Create the process-wide engine. Idempotent, so repeat calls are cheap."""
     global _engine, _session_factory
@@ -65,6 +87,8 @@ def init_engine(database_url=None):
 
     if _is_sqlite(url):
         _configure_sqlite(_engine)
+    elif url.startswith("postgresql"):
+        _configure_postgresql(_engine)
 
     _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine

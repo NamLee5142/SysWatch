@@ -6,19 +6,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import session as db_session
-from app.db.models import Base, SnapshotRecord
+from app.db.models import SnapshotRecord
+from app.repositories.snapshot_store import from_storage_time
 
 
 @pytest.fixture
-def session():
+def session(database):
     # A plain Session rather than app.db.get_session(): several tests provoke an
     # IntegrityError on purpose, and get_session() commits on exit, which would
     # fail on the already-rolled-back transaction.
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
-    with Session(engine) as active:
+    with Session(database) as active:
         yield active
         active.rollback()
 
@@ -77,17 +74,44 @@ def test_required_columns_reject_null(session):
         session.flush()
 
 
+@pytest.mark.sqlite_only
 def test_collected_at_reads_back_without_a_timezone(session):
+    """Why to_storage_time and from_storage_time exist.
+
+    SQLite has no timezone type: the offset written is not the offset returned,
+    it is no offset at all. Everything above the store is UTC-aware, so values
+    are normalised to UTC on the way in and re-tagged on the way out.
+
+    PostgreSQL's TIMESTAMPTZ does keep the offset and hands back an aware
+    value, which is why this one is marked. The behaviour that has to hold on
+    both engines is the test below.
+    """
     session.add(make_record())
     session.flush()
     session.expire_all()
 
     stored = session.execute(select(SnapshotRecord)).scalar_one()
 
-    # SQLite has no timezone type, so the offset written is not returned. Values
-    # must be normalised to UTC on write and re-tagged as UTC on read.
     assert stored.collected_at.tzinfo is None
     assert stored.collected_at == datetime(2026, 8, 12, 11, 15, 27)
+
+
+def test_collected_at_reads_back_as_the_same_instant(session):
+    """What the application actually depends on, on any engine.
+
+    The store re-tags what it reads, so a caller comparing a stored time with
+    an aware one is comparing instants - whether the driver kept the offset or
+    dropped it.
+    """
+    session.add(make_record())
+    session.flush()
+    session.expire_all()
+
+    stored = session.execute(select(SnapshotRecord)).scalar_one()
+
+    assert from_storage_time(stored.collected_at) == datetime(
+        2026, 8, 12, 11, 15, 27, tzinfo=timezone.utc
+    )
 
 
 def test_schema_has_expected_indexes(session):

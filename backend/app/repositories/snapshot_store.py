@@ -1,23 +1,77 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import DateTime, delete, func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql.functions import FunctionElement
 
 from app.db import get_session
 from app.db.models import SnapshotRecord
 
 DEFAULT_LIMIT = 100
 
+RAW_BUCKET = "raw"
+
 # strftime patterns that truncate a timestamp to the start of its bucket. The
-# grouped-by value doubles as the bucket's label, so the two can never disagree.
-BUCKET_FORMATS = {
+# shape is SQLite's own datetime spelling, which is why the driver hands the
+# result back as a datetime rather than as the string strftime returns.
+SQLITE_BUCKET_FORMATS = {
     "minute": "%Y-%m-%d %H:%M:00",
     "hour": "%Y-%m-%d %H:00:00",
     "day": "%Y-%m-%d 00:00:00",
 }
-BUCKET_LABEL_FORMAT = "%Y-%m-%d %H:%M:%S"
-RAW_BUCKET = "raw"
+BUCKETS = tuple(SQLITE_BUCKET_FORMATS)
+
+
+class bucket_start(FunctionElement):
+    """The start of the bucket a timestamp falls in.
+
+    There is no portable spelling of this. SQLite truncates by formatting -
+    strftime with the smaller fields written as literal zeroes - and PostgreSQL
+    has date_trunc, which takes the unit by name. Compiling per dialect keeps
+    both out of series(), which should be about charts.
+
+    The declared DateTime is what makes the two agree on the way back. SQLite's
+    strftime returns text, but the patterns above produce exactly the spelling
+    SQLite uses for a datetime column, so the driver parses it like one; the
+    grouped value therefore arrives as a datetime from either engine and the
+    caller never learns which it was talking to.
+
+    The bucket is checked against BUCKETS here rather than at the call site,
+    because it is interpolated into SQL text below and this is the only place
+    that can promise it was never anything else.
+    """
+
+    type = DateTime()
+    # The name and the bucket are all that vary, and both are in the cache key
+    # by virtue of being on the class - so SQLAlchemy may cache the compiled
+    # form. Without this it logs a warning on every query.
+    inherit_cache = True
+
+    def __init__(self, bucket, column):
+        if bucket not in BUCKETS:
+            raise ValueError(f"Unknown bucket: {bucket}")
+        self.bucket = bucket
+        super().__init__(column)
+
+
+@compiles(bucket_start, "sqlite")
+def _bucket_start_sqlite(element, compiler, **kw):
+    column = compiler.process(list(element.clauses)[0], **kw)
+    return f"strftime('{SQLITE_BUCKET_FORMATS[element.bucket]}', {column})"
+
+
+@compiles(bucket_start, "postgresql")
+def _bucket_start_postgresql(element, compiler, **kw):
+    column = compiler.process(list(element.clauses)[0], **kw)
+    # AT TIME ZONE 'UTC' before truncating, not after. collected_at is
+    # TIMESTAMPTZ here, and date_trunc on one truncates in the session's
+    # timezone - so an hourly bucket on a server set to Asia/Ho_Chi_Minh would
+    # start on a different hour than the same data does on SQLite. Everything
+    # this application stores is UTC; saying so makes the bucket the same
+    # wherever the server happens to think it lives.
+    return f"date_trunc('{element.bucket}', timezone('UTC', {column}))"
 
 
 @dataclass(frozen=True)
@@ -199,7 +253,7 @@ class SnapshotStore:
                 SnapshotRecord.collected_at.asc(), SnapshotRecord.id.asc()
             )
         else:
-            label = func.strftime(self._bucket_format(bucket), SnapshotRecord.collected_at)
+            label = bucket_start(bucket, SnapshotRecord.collected_at)
             statement = self._filtered(
                 select(label, func.avg(value)), host_name, since, until
             )
@@ -209,7 +263,7 @@ class SnapshotStore:
             rows = session.execute(statement.limit(limit)).all()
 
         return [
-            SeriesPoint(at=self._point_time(at, bucket), value=float(value))
+            SeriesPoint(at=from_storage_time(at), value=float(value))
             for at, value in rows
             # A NULL value has nothing to plot: for cpu/memory/disk every row in
             # the bucket had a zero total, for processes/network none of them
@@ -217,20 +271,6 @@ class SnapshotStore:
             # Plotting a zero would misread as an idle machine.
             if value is not None
         ]
-
-    def _bucket_format(self, bucket):
-        try:
-            return BUCKET_FORMATS[bucket]
-        except KeyError:
-            raise ValueError(f"Unknown bucket: {bucket}") from None
-
-    def _point_time(self, at, bucket):
-        # A raw point carries a real datetime column; a bucketed one carries the
-        # strftime label, which is a string and has to be read back.
-        if bucket == RAW_BUCKET:
-            return from_storage_time(at)
-
-        return datetime.strptime(at, BUCKET_LABEL_FORMAT).replace(tzinfo=timezone.utc)
 
     def prune(self, older_than):
         """Delete snapshots collected before the cutoff. Returns rows removed."""

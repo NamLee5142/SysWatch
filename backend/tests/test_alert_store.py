@@ -3,22 +3,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.db import session as db_session
-from app.db.models import Base
 from app.repositories import AlertRuleStore, AlertStore
 
 BASE_TIME = datetime(2026, 8, 12, 11, 15, 27, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def stores():
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
-    yield AlertRuleStore(), AlertStore()
-
-    db_session.dispose_engine()
+def stores(database):
+    return AlertRuleStore(), AlertStore()
 
 
 @pytest.fixture

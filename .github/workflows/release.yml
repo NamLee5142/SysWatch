@@ -102,6 +102,7 @@ jobs:
           # fixtures for tests that are not here.
           mkdir -p "$out/backend"
           (cd backend && tar --exclude=tests --exclude=conftest.py --exclude=.venv \
+              --exclude=requirements-dev.txt \
               --exclude=__pycache__ --exclude=.pytest_cache --exclude=data -cf - .) \
               | (cd "$out/backend" && tar -xf -)
           cp README.md LICENSE "$out/" 2>/dev/null || true

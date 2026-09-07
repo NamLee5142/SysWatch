@@ -10,12 +10,38 @@ enforces it by logging in and then grepping the file.
 """
 import logging
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from config import get_settings
 
-FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+# ISO 8601, in UTC, with the offset spelled out.
+#
+# Not a style preference. Everything this application stores is UTC - the
+# database columns, the API's collectedAt, the alert timestamps - and the log
+# was the one thing writing local time. On a machine seven hours off UTC the
+# same instant appeared twice with a seven-hour gap between the two spellings,
+# and correlating a log line with the snapshot it describes meant doing the
+# arithmetic in your head, during an incident. It misled the author of this
+# comment with both values on screen.
+#
+# The shape matches what the API serves, so a log line and a collectedAt can be
+# compared by eye or by grep.
+FORMAT = "%(asctime)s.%(msecs)03dZ %(levelname)s %(name)s: %(message)s"
+DATE_FORMAT = "%Y-%m-%dT%H:%M:%S"
+
+
+class UtcFormatter(logging.Formatter):
+    """logging.Formatter, but the clock is UTC.
+
+    logging uses time.localtime by default and offers no setting for this; the
+    converter is the documented way to change it.
+    """
+
+    converter = time.gmtime
+
+
 LOG_FILE_NAME = "syswatch.log"
 
 # 5 MB before rolling, five kept: enough to cover the run-up to an incident on
@@ -37,7 +63,7 @@ def _remove_our_handlers(root):
 
 def _mark(handler):
     setattr(handler, _OURS, True)
-    handler.setFormatter(logging.Formatter(FORMAT))
+    handler.setFormatter(UtcFormatter(FORMAT, datefmt=DATE_FORMAT))
     return handler
 
 
@@ -83,7 +109,21 @@ def configure_logging(settings=None):
     # Nothing is lost by silencing it. A poll that fails is reported by
     # app.services.snapshot_poller, which knows what the request was for;
     # httpx only knows that a GET happened.
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    #
+    # It has since acquired a second job. httpx logs the full URL of every
+    # request, and a webhook URL is usually a credential - Slack, Discord and
+    # Teams all put a token in the path. So these lines are what keep that
+    # token out of the log file, and lowering either to debug a request
+    # publishes the token as well. See app/alerts/webhook.py.
+    #
+    # httpcore is httpx's transport, and a separate logger. Silencing httpx
+    # alone left it writing connect_tcp.started host=... port=... for every
+    # request at DEBUG. It never logs the path, so the token itself was never
+    # exposed - but that was a property of somebody else's library rather than
+    # anything enforced here, and a version of it that logged the full URL
+    # would have published the token without changing a line of this file.
+    for chatty in ("httpx", "httpcore"):
+        logging.getLogger(chatty).setLevel(logging.WARNING)
 
     return log_file
 

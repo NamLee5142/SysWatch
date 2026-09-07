@@ -1,7 +1,8 @@
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.auth.dependencies import require_admin
-from app.models.alert import AlertRule, AlertRuleCreate, AlertRuleList, AlertRuleUpdate
+from app.models.alert import AlertRule, AlertRuleCreate, AlertRuleList, AlertRuleUpdate, AlertRuleSilence
 from app.repositories import AlertRuleStore
 
 router = APIRouter()
@@ -73,3 +74,52 @@ def delete_alert_rule(rule_id: int):
         raise HTTPException(status_code=404, detail="No alert rule with that id")
 
     return Response(status_code=204)
+
+
+@router.post(
+    "/alert-rules/{rule_id}/silence",
+    response_model=AlertRule,
+    summary="Stop being told about a rule for a while",
+    dependencies=ADMIN_ONLY,
+    responses={404: {"description": "No such rule"}},
+)
+def silence_alert_rule(rule_id: int, payload: AlertRuleSilence):
+    """Silence a rule for a number of minutes from now.
+
+    The rule keeps evaluating and keeps recording: history stays complete, the
+    dashboard still shows what is firing, and only the outbound message is
+    withheld. Silencing is not a quieter way of disabling a rule.
+
+    Admin only, like every other change to a rule. Acknowledging one alert is
+    the person on shift saying they have seen it; silencing a rule decides for
+    everybody, which is a different kind of act.
+    """
+    until = datetime.now(timezone.utc) + timedelta(minutes=payload.minutes)
+    record = create_rule_store().silence(rule_id=rule_id, until=until)
+
+    if record is None:
+        raise HTTPException(status_code=404, detail="Alert rule not found")
+
+    return AlertRule.from_record(record)
+
+
+@router.delete(
+    "/alert-rules/{rule_id}/silence",
+    response_model=AlertRule,
+    summary="Start being told about a rule again",
+    dependencies=ADMIN_ONLY,
+    responses={404: {"description": "No such rule"}},
+)
+def unsilence_alert_rule(rule_id: int):
+    """Lift a silence early.
+
+    A silence expires on its own, so this is for the case where the fix landed
+    sooner than expected - and without it the only way back is to wait, which
+    would make anyone think twice about silencing at all.
+    """
+    record = create_rule_store().silence(rule_id=rule_id, until=None)
+
+    if record is None:
+        raise HTTPException(status_code=404, detail="Alert rule not found")
+
+    return AlertRule.from_record(record)

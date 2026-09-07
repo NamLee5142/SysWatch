@@ -127,6 +127,9 @@ export interface AlertRule {
   threshold: number
   severity: Severity
   enabled: boolean
+  // Not the same as disabled. A silenced rule still evaluates and still opens
+  // alerts; only the outbound message is withheld, until this instant passes.
+  silencedUntil: string | null
   createdAt: string
   updatedAt: string
 }
@@ -150,6 +153,11 @@ export interface Alert {
   value: number
   triggeredAt: string
   resolvedAt: string | null
+  // Somebody has seen this and is dealing with it. The alert stays open; what
+  // stops is the reminders.
+  acknowledgedAt: string | null
+  acknowledgedBy: string | null
+  lastNotifiedAt: string | null
   lastSeenAt: string
 }
 

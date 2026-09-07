@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -93,6 +93,33 @@ class Settings(BaseSettings):
     # grant, and the one that does should have to say so.
     cors_origins: Annotated[list[str], NoDecode] = []
 
+    # --- alert delivery ------------------------------------------------------
+    #
+    # Every transport is off until configured. An alerting system that starts
+    # mailing strangers because a default pointed somewhere is worse than one
+    # that says nothing, and the log notifier means "nothing configured" still
+    # leaves a record.
+    # Below this, an alert is recorded and logged but not sent outward. An
+    # operator who does not want mail about warnings still wants warnings in
+    # the log, so this governs the transports rather than the record.
+    notify_min_severity: Literal["info", "warning", "critical"] = "warning"
+    # Remind about an alert that is still firing, every this many hours. Zero
+    # is off, and off is the default: an alerting system that starts mailing
+    # every four hours because nobody chose to is worse than one that says a
+    # thing once. Acknowledging an alert, or silencing its rule, stops the
+    # reminders for it.
+    notify_repeat_hours: int = 0
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    # Never logged, never repr'd. See app/alerts/smtp.py.
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_to: Annotated[list[str], NoDecode] = []
+    # Usually a credential rather than an address: Slack, Discord and Teams all
+    # embed a token in the path. Treated like one - never logged, never repr'd.
+    webhook_url: str = ""
+
     model_config = SettingsConfigDict(
         env_prefix="SYSWATCH_",
         case_sensitive=False,
@@ -133,6 +160,16 @@ class Settings(BaseSettings):
     def split_cors_origins(cls, value):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
+
+    # Recipients take the same comma-separated spelling, for the same reason:
+    # a shell variable that has to be valid JSON is a shell variable people get
+    # wrong.
+    @field_validator("smtp_to", mode="before")
+    @classmethod
+    def split_smtp_to(cls, value):
+        if isinstance(value, str):
+            return [address.strip() for address in value.split(",") if address.strip()]
         return value
 
     @field_validator("cors_origins")

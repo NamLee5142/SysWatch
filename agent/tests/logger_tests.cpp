@@ -7,6 +7,9 @@
 
 #include "logging/Logger.h"
 #include <cassert>
+#include <chrono>
+#include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -47,6 +50,37 @@ void writesWhatItIsGiven() {
     assert(text.find("INFO agent: listening on 127.0.0.1:8080") != std::string::npos);
     assert(text.find("WARNING agent: something worth noticing") != std::string::npos);
     assert(text.find("ERROR agent: something worth fixing") != std::string::npos);
+}
+
+void stampsLinesInUtc() {
+    // The backend and the /snapshot payload are both UTC; this was the one
+    // thing writing local time, which put the same instant seven hours from
+    // itself on the machine it was found on. A support bundle has to have one
+    // clock in it.
+    const auto path = scratch() / "agent.log";
+    {
+        logging::Logger log(path.string());
+        log.info("what time is it");
+    }
+
+    const std::string line = read(path);
+
+    // 2026-09-06T04:18:16.169Z INFO agent: what time is it
+    char expected[32];
+    const auto now = std::chrono::system_clock::to_time_t(
+        std::chrono::system_clock::now());
+    std::tm utc{};
+#if defined(_WIN32)
+    gmtime_s(&utc, &now);
+#else
+    gmtime_r(&now, &utc);
+#endif
+    // To the minute: enough to tell UTC from any real offset, loose enough not
+    // to fail on the second boundary between writing and reading.
+    std::strftime(expected, sizeof(expected), "%Y-%m-%dT%H:%M", &utc);
+
+    assert(line.rfind(expected, 0) == 0);
+    assert(line.find("Z INFO agent: what time is it") != std::string::npos);
 }
 
 void createsTheDirectory() {
@@ -145,6 +179,7 @@ void interleavedWritesStayOnTheirOwnLines() {
 
 int main() {
     writesWhatItIsGiven();
+    stampsLinesInUtc();
     createsTheDirectory();
     appendsRatherThanTruncating();
     rotatesRatherThanGrowingForever();

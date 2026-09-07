@@ -6,7 +6,7 @@ from sqlalchemy import insert
 
 from app.api.snapshots import MAX_POINTS
 from app.db import session as db_session
-from app.db.models import Base, SnapshotRecord
+from app.db.models import SnapshotRecord
 from app.main import create_app
 from app.models.snapshot import Snapshot
 from app.repositories import SnapshotStore
@@ -18,14 +18,8 @@ client = TestClient(app, base_url="http://testserver/api")
 
 
 @pytest.fixture(autouse=True)
-def store():
-    db_session.dispose_engine()
-    engine = db_session.init_engine("sqlite://")
-    Base.metadata.create_all(engine)
-
-    yield SnapshotStore()
-
-    db_session.dispose_engine()
+def store(database):
+    return SnapshotStore()
 
 
 def save(

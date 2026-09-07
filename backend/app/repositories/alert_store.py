@@ -98,10 +98,36 @@ class AlertRuleStore:
 
         return True
 
+    def silence(self, *, rule_id, until):
+        """Silence a rule until an instant, or clear it with until=None.
+
+        Returns the rule, or None. Silencing an already-silenced rule replaces
+        the expiry rather than refusing: an operator extending a maintenance
+        window is doing the obvious thing, and making them clear it first would
+        leave a gap where the alerts come back.
+        """
+        statement = (
+            update(AlertRuleRecord)
+            .where(AlertRuleRecord.id == rule_id)
+            .values(
+                silenced_until=to_storage_time(until) if until else None,
+                updated_at=_now(),
+            )
+        )
+
+        with get_session() as session:
+            result = session.execute(statement)
+
+            if result.rowcount == 0:
+                return None
+
+        return self.get(rule_id)
+
     def _hydrate(self, record):
         if record is None:
             return None
 
+        record.silenced_until = from_storage_time(record.silenced_until)
         record.created_at = from_storage_time(record.created_at)
         record.updated_at = from_storage_time(record.updated_at)
         return record
@@ -183,7 +209,12 @@ class AlertStore:
             session.execute(statement)
 
     def resolve(self, *, alert_id, value, at):
-        """Close an alert: state -> ok, resolved_at stamped."""
+        """Close an alert: state -> ok, resolved_at stamped.
+
+        Returns the closed alert, like open_new returns the opened one. A
+        caller announcing the resolution needs the resolved row: the one it
+        held before this call still says it is firing.
+        """
         stored_at = to_storage_time(at)
         statement = (
             update(AlertRecord)
@@ -194,6 +225,56 @@ class AlertStore:
                 resolved_at=stored_at,
                 last_seen_at=stored_at,
             )
+        )
+
+        with get_session() as session:
+            session.execute(statement)
+
+        return self.get(alert_id)
+
+    def acknowledge(self, *, alert_id, username, at=None):
+        """Record that somebody has seen this alert. Returns it, or None.
+
+        The alert stays open. Acknowledgement says "I know, I am dealing with
+        it", not "this is over" - closing it would lose the state the operator
+        acknowledged, and the condition is still true.
+
+        Acknowledging twice keeps the first name and time. The question an
+        acknowledgement answers is who picked it up, and that is whoever got
+        there first.
+        """
+        if self.get(alert_id) is None:
+            return None
+
+        stored_at = to_storage_time(at or datetime.now(timezone.utc))
+        statement = (
+            update(AlertRecord)
+            .where(AlertRecord.id == alert_id)
+            # Only if nobody has. Checking in Python first and then writing is
+            # a read-modify-write: two callers acknowledging at once both see
+            # NULL, both write, and the later one wins - which is the opposite
+            # of what this method promises. Letting the database decide makes
+            # the second update match no rows.
+            .where(AlertRecord.acknowledged_at.is_(None))
+            .values(acknowledged_at=stored_at, acknowledged_by=username)
+        )
+
+        with get_session() as session:
+            session.execute(statement)
+
+        return self.get(alert_id)
+
+    def mark_notified(self, *, alert_id, at):
+        """Record that something was sent about this alert.
+
+        Separate from touch(), which moves last_seen_at on every evaluation.
+        A reminder needs to know when a message last went out, and an alert
+        that has been evaluated nine thousand times has been mentioned twice.
+        """
+        statement = (
+            update(AlertRecord)
+            .where(AlertRecord.id == alert_id)
+            .values(last_notified_at=to_storage_time(at))
         )
 
         with get_session() as session:
@@ -258,4 +339,8 @@ class AlertStore:
         record.triggered_at = from_storage_time(record.triggered_at)
         record.resolved_at = from_storage_time(record.resolved_at)
         record.last_seen_at = from_storage_time(record.last_seen_at)
+        # Every timestamp on the record, or the API serves one naive datetime
+        # among four aware ones and a client has to guess which.
+        record.acknowledged_at = from_storage_time(record.acknowledged_at)
+        record.last_notified_at = from_storage_time(record.last_notified_at)
         return record
