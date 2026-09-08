@@ -136,7 +136,7 @@ describe('AppShell header', () => {
 
     renderShell()
 
-    const link = await screen.findByRole('link', { name: '2 active alerts' })
+    const link = await screen.findByRole('link', { name: '2 active alerts across all hosts' })
     expect(link).toHaveAttribute('href', '/alerts')
   })
 })

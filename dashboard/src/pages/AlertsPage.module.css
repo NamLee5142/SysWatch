@@ -192,3 +192,10 @@ section.section {
   font-size: 13px;
   color: var(--status-down);
 }
+
+/* Under the heading, quieter than the tables it explains. */
+.scopeNote {
+  margin: -4px 0 16px;
+  font-size: 13px;
+  color: var(--text-muted, #6b7280);
+}
