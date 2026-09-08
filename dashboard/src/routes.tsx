@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { LoginRoute } from './auth/LoginRoute'
 import { ProtectedRoute } from './auth/ProtectedRoute'
+import { SelectedHostProvider } from './hosts/SelectedHostProvider'
 import { AppShell } from './layout/AppShell'
 import { AlertsPage } from './pages/AlertsPage'
 import { CpuPage } from './pages/CpuPage'
@@ -24,7 +25,16 @@ export function AppRoutes() {
           would fire requests it is guaranteed to get 401s for. */}
       <Route path="/login" element={<LoginRoute />} />
       <Route element={<ProtectedRoute />}>
-        <Route element={<AppShell />}>
+        {/* Inside ProtectedRoute for the same reason the shell is: it polls
+            /hosts, which needs a session. Outside AppShell because the shell's
+            own header reads the selection. */}
+        <Route
+          element={
+            <SelectedHostProvider>
+              <AppShell />
+            </SelectedHostProvider>
+          }
+        >
           <Route index element={<OverviewPage />} />
           <Route path="cpu" element={<CpuPage />} />
           <Route path="memory" element={<MemoryPage />} />

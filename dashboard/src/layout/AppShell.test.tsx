@@ -3,7 +3,7 @@ import { Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getActiveAlerts, getLatestSnapshot, getStatus } from '../api/client'
-import type { Snapshot, Status } from '../api/types'
+import type { Status } from '../api/types'
 import { renderWithAuth } from '../test/renderWithAuth'
 import { AppShell } from './AppShell'
 
@@ -13,13 +13,6 @@ vi.mock('../api/client', () => ({
   getActiveAlerts: vi.fn(),
 }))
 
-const SNAPSHOT: Snapshot = {
-  collectedAt: new Date().toISOString(),
-  cpuInfo: { coreCount: 8, usagePercent: 10 },
-  memoryInfo: { totalMB: 16384, usedMB: 4096 },
-  diskInfo: { totalGB: 512, freeGB: 112 },
-  systemInfo: { name: 'Windows', version: '11', hostName: 'devbox' },
-}
 
 const STATUS: Status = {
   backend: 'ok',
@@ -55,22 +48,23 @@ beforeEach(() => {
 })
 
 describe('AppShell header', () => {
-  it('shows a dash for the hostname before the first snapshot arrives', () => {
-    vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
+  it('names the selected host', () => {
+    // Read from /hosts now, not from the latest snapshot. With two machines
+    // reporting, "whichever row is newest" showed one of them, alternating,
+    // with nothing on screen to say so.
     vi.mocked(getStatus).mockReturnValue(neverSettles())
 
     renderShell()
 
-    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.getByText('devbox')).toBeInTheDocument()
   })
 
-  it('shows the real hostname once the snapshot loads', async () => {
-    vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
+  it('shows a dash when no host has reported yet', () => {
     vi.mocked(getStatus).mockReturnValue(neverSettles())
 
-    renderShell()
+    renderShell({ hosts: [], hostName: null })
 
-    await waitFor(() => expect(screen.getByText('devbox')).toBeInTheDocument())
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 
   it('shows Unknown before the status poll resolves', () => {

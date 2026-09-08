@@ -1,8 +1,9 @@
 import { NavLink, Outlet } from 'react-router-dom'
 
-import { getLatestSnapshot, getStatus } from '../api/client'
+import { getStatus } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { AlertIndicator } from '../components/AlertIndicator'
+import { HostSelector } from '../hosts/HostSelector'
 import { StalenessBanner } from '../components/StalenessBanner'
 import { StatusDot } from '../components/StatusDot'
 import { usePolling } from '../hooks/usePolling'
@@ -45,11 +46,9 @@ export function AppShell() {
   // themselves poll the latest snapshot. A little duplicated polling against
   // a cheap SQLite read is the cost of that — see the "Data fetching" locked
   // decision for why this app has no shared request cache to avoid it.
-  const snapshot = usePolling((signal) => getLatestSnapshot(undefined, signal), POLL_INTERVAL_MS)
   const status = usePolling(getStatus, POLL_INTERVAL_MS)
 
   const agentState = status.data?.agent ?? 'unknown'
-  const hostName = snapshot.data?.systemInfo.hostName
 
   return (
     <div className={styles.shell}>
@@ -69,7 +68,7 @@ export function AppShell() {
       </aside>
       <div className={styles.main}>
         <header className={styles.header}>
-          <span className={styles.hostName}>{hostName ?? '—'}</span>
+          <HostSelector />
           <div className={styles.headerRight}>
             <AlertIndicator />
             <span className={styles.connection}>
