@@ -83,6 +83,23 @@ function(add_agent_test name source)
     target_link_libraries(${name} PRIVATE agent_core)
     target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
+    # Every test here checks with assert(), and a Release build defines NDEBUG,
+    # which compiles assert() to nothing. CI builds Release. So each of these
+    # executables ran to the end of main(), printed "passed" and checked
+    # nothing - a suite that could not fail, in the configuration that ships.
+    #
+    # Demonstrated by making Logger.cpp stamp local time instead of UTC, the
+    # thing logger_tests was written to catch: it printed "Logger tests passed"
+    # while logging 09:16 local as 09:16Z.
+    #
+    # Undefined per test target rather than by changing the build type: the
+    # agent should keep shipping -O3, and the tests are not what ships.
+    if (MSVC)
+        target_compile_options(${name} PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(${name} PRIVATE -UNDEBUG)
+    endif()
+
     if (AGENT_STATIC_LINK_OPTIONS)
         target_link_options(${name} PRIVATE ${AGENT_STATIC_LINK_OPTIONS})
     endif()
