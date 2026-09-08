@@ -53,25 +53,52 @@ def ingest_snapshot(
     """
     stored = create_snapshot_store().save(snapshot, host_name=agent.host_name)
 
-    reported = snapshot.systemInfo.hostName
-    if reported != agent.host_name:
-        # Not an error, and not a refusal: the row is already filed under the
-        # credential's host, so nothing has been forged. It is almost always a
-        # deployment mistake - one machine's token copied to another - and it
-        # is invisible from the dashboard, which shows only the name the token
-        # gave. Neither name is a secret, so both go in the line that says so.
-        logger.warning(
-            "Agent for %r pushed a snapshot reporting hostname %r. The snapshot "
-            "was stored under %r. Check which machine holds this token.",
-            agent.host_name,
-            reported,
-            agent.host_name,
-        )
+    note_reported_hostname(agent.host_name, snapshot.systemInfo.hostName)
 
     if stored is not None:
         evaluate_alerts(request, snapshot, agent.host_name)
 
     return IngestResult(hostName=agent.host_name, stored=stored is not None)
+
+
+# Pairs of (credential host, reported host) already mentioned. Bounded by the
+# number of agents, which is the number of machines somebody installed.
+_MENTIONED = set()
+
+
+def note_reported_hostname(host_name, reported):
+    """Say once that the payload's hostname is not the credential's.
+
+    Once, not per push. The first version of this logged on every request and
+    an agent pushing every second wrote 86,400 identical lines a day - 93% of
+    the log file, measured on the first sustained run against a real backend.
+    That is the same mistake httpx was making before Sprint 11 silenced it, and
+    it buries the lines that mean something.
+
+    Downgraded from a warning too, because it is usually not a problem. A token
+    named "web-prod-01" issued to a machine Windows calls "DESKTOP-LMACFS6" is
+    an operator naming things sensibly, and the whole reason identity comes
+    from the credential is that the payload's name is not authoritative. The
+    backend cannot tell that apart from a token copied to the wrong machine -
+    so it says what it sees, once, and does not editorialise.
+    """
+    if reported == host_name:
+        return
+
+    pair = (host_name, reported)
+    if pair in _MENTIONED:
+        return
+
+    # A benign race at worst: two threads may both log this once. A duplicate
+    # line is cheaper than a lock on the ingestion path.
+    _MENTIONED.add(pair)
+    logger.info(
+        "Snapshots from %r report the hostname %r. They are stored under %r, "
+        "which is the host its credential names.",
+        host_name,
+        reported,
+        host_name,
+    )
 
 
 def evaluate_alerts(request, snapshot, host_name):

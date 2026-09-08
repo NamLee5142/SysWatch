@@ -222,6 +222,34 @@ two languages agreeing over a socket for the first time will find something.
 *Done when:* a C++ agent on one machine and a Python backend on another have
 exchanged snapshots for an hour.
 
+*What it found.* One thing, and it was the log.
+
+The hostname-mismatch line from commit 4 fired on **every push**: 315 of 319
+lines in the backend log, 93% of the file, for an agent that was working
+perfectly. At a one-second interval that is 86,400 identical lines a day. It is
+the same mistake httpx was making before Sprint 11 silenced it, rebuilt three
+sprints later by the person who wrote that comment.
+
+Worse than the volume was the wording. It said "Check which machine holds this
+token", and the mismatch was not a mistake at all - a token named `soakbox` on
+a machine Windows calls `DESKTOP-LMACFS6` is an operator naming things
+sensibly. Identity comes from the credential *precisely so* the payload's name
+need not match, and the backend cannot tell a deliberate choice from a
+misplaced token. Now said once per pair of names, at INFO, without
+editorialising: 319 log lines became 22 for the same workload.
+
+*What it did not find,* which is worth recording because each was a candidate:
+memory flat over the run (+12 KB), no dropped or duplicated snapshots across
+several hundred (0 gaps, 0 missing), a 939-byte payload with a full process
+list, and clean recovery from a real outage - the backend killed for 100
+seconds, 26 failed attempts, the buffer held every reading and delivered all of
+them on reconnection.
+
+*Noticed, not fixed:* alert rules flap. Memory hovering either side of a 90%
+threshold opened and resolved the same alert five times in three minutes. That
+predates push - a polled host does the same - and hysteresis is an alert-engine
+change, not this sprint's.
+
 ### Phase C — Seeing more than one machine (commits 13–17)
 
 **13. `feat: a host selector`**

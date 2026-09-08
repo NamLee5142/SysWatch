@@ -124,24 +124,66 @@ def test_the_response_names_the_credential_host(client):
     assert body["hostName"] == "buildbox"
 
 
-def test_a_mismatch_is_logged_for_the_operator(client, caplog):
-    """Almost always one machine's token copied to another.
+@pytest.fixture(autouse=True)
+def forget_mentioned_hostnames():
+    """The "said it once" set is module state and outlives a test."""
+    from app.api import ingest
 
-    Not an error - nothing was forged, the row is filed correctly - but it is
-    invisible from the dashboard, which only ever shows the credential's name.
+    ingest._MENTIONED.clear()
+    yield
+    ingest._MENTIONED.clear()
+
+
+def test_a_mismatch_is_mentioned_once(client, caplog):
+    """Once, not per push.
+
+    The first version logged on every request. An agent pushing every second
+    wrote 86,400 identical lines a day - 93% of the log, measured on the first
+    sustained run against a real backend.
     """
-    with caplog.at_level("WARNING"):
-        push(client, issue("buildbox"), payload(host="devbox"))
+    token = issue("buildbox")
 
+    with caplog.at_level("INFO"):
+        for _ in range(5):
+            push(client, token, payload(host="devbox", at=AT + timedelta(seconds=_)))
+
+    mentions = [r for r in caplog.records if "report the hostname" in r.message]
+    assert len(mentions) == 1
     assert "buildbox" in caplog.text
     assert "devbox" in caplog.text
 
 
+def test_it_is_not_a_warning(client, caplog):
+    """A token named for a role on a machine named by Windows is normal.
+
+    Identity comes from the credential precisely so the payload's name need not
+    match, and the backend cannot tell a sensible naming choice from a token on
+    the wrong machine. It says what it sees and does not editorialise.
+    """
+    with caplog.at_level("INFO"):
+        push(client, issue("buildbox"), payload(host="devbox"))
+
+    mentions = [r for r in caplog.records if "report the hostname" in r.message]
+    assert [r.levelname for r in mentions] == ["INFO"]
+
+
+def test_a_different_reported_name_is_mentioned_again(client, caplog):
+    """An agent whose machine was renamed is worth hearing about once more."""
+    token = issue("buildbox")
+
+    with caplog.at_level("INFO"):
+        push(client, token, payload(host="devbox", at=AT))
+        push(client, token, payload(host="otherbox", at=AT + timedelta(seconds=1)))
+
+    mentions = [r for r in caplog.records if "report the hostname" in r.message]
+    assert len(mentions) == 2
+
+
 def test_a_matching_hostname_is_not_logged(client, caplog):
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("INFO"):
         push(client, issue("buildbox"), payload(host="buildbox"))
 
-    assert "Check which machine holds this token" not in caplog.text
+    assert "report the hostname" not in caplog.text
 
 
 def test_the_log_line_carries_no_token(client, caplog):
