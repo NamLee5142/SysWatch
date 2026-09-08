@@ -8,6 +8,7 @@ import { StatCard } from '../components/StatCard'
 import { StatCardSkeleton } from '../components/StatCardSkeleton'
 import { TableSkeletonRows } from '../components/TableSkeletonRows'
 import { TimeRangePicker } from '../components/TimeRangePicker'
+import { useSelectedHost } from '../hosts/SelectedHostContext'
 import { usePolling } from '../hooks/usePolling'
 import { useUpdateEffect } from '../hooks/useUpdateEffect'
 import { POLL_INTERVAL_MS } from '../lib/constants'
@@ -51,14 +52,16 @@ function TopProcessTable({ processInfo }: { processInfo: ProcessInfo }) {
 }
 
 export function ProcessPage() {
+  const { hostName } = useSelectedHost()
   const [range, setRange] = useState<TimeRange>(DEFAULT_TIME_RANGE)
 
-  const snapshot = usePolling((signal) => getLatestSnapshot(undefined, signal), POLL_INTERVAL_MS)
+  const snapshot = usePolling((signal) => getLatestSnapshot(hostName ?? undefined, signal), POLL_INTERVAL_MS)
   const series = usePolling(
     (signal) =>
       getSnapshotSeries(
         {
           metric: 'processes',
+          host: hostName ?? undefined,
           since: new Date(Date.now() - range.rangeMs).toISOString(),
           bucket: range.bucket,
         },

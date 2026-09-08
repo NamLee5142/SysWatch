@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { renderWithHost } from '../test/renderWithHost'
 import { getLatestSnapshot, getSnapshotSeries, NetworkError } from '../api/client'
 import type { Series, Snapshot } from '../api/types'
 import { ProcessPage } from './ProcessPage'
@@ -66,7 +67,7 @@ describe('ProcessPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<ProcessPage />)
+    renderWithHost(<ProcessPage />)
 
     expect(screen.getByText('Loading processes')).toBeInTheDocument()
     expect(screen.getByText('Loading Process count over time')).toBeInTheDocument()
@@ -76,7 +77,7 @@ describe('ProcessPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<ProcessPage />)
+    renderWithHost(<ProcessPage />)
 
     // Both the count and the table section fall back to the same message.
     await waitFor(() =>
@@ -88,7 +89,7 @@ describe('ProcessPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<ProcessPage />)
+    renderWithHost(<ProcessPage />)
 
     await waitFor(() => expect(screen.getByText('240')).toBeInTheDocument())
     expect(screen.getByText('chrome.exe')).toBeInTheDocument()
@@ -100,7 +101,7 @@ describe('ProcessPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<ProcessPage />)
+    renderWithHost(<ProcessPage />)
 
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalled())
     expect(vi.mocked(getSnapshotSeries).mock.calls[0][0].metric).toBe('processes')
@@ -111,7 +112,7 @@ describe('ProcessPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(withoutProcess)
     vi.mocked(getSnapshotSeries).mockResolvedValue({ ...SERIES, points: [] })
 
-    render(<ProcessPage />)
+    renderWithHost(<ProcessPage />)
 
     await waitFor(() =>
       expect(screen.getAllByText('This agent does not report process data.').length).toBeGreaterThan(0),
