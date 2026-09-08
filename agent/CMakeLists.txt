@@ -24,6 +24,8 @@ add_library(agent_core STATIC
     src/scheduler/Scheduler.cpp
     src/http/HTTPServer.cpp
     src/http/HttpParser.cpp
+    src/http/HttpClient.cpp
+    src/http/Url.cpp
     src/runtime/AgentRuntime.cpp
     src/runtime/CommandLine.cpp
     src/service/WindowsService.cpp
@@ -126,3 +128,6 @@ add_agent_test(http_server_snapshot_tests tests/http_server_snapshot_tests.cpp)
 add_agent_test(http_server_concurrency_tests tests/http_server_concurrency_tests.cpp)
 add_agent_test(http_server_integration_tests tests/http_server_integration_tests.cpp)
 add_agent_test(http_request_parse_tests tests/http_request_parse_tests.cpp)
+add_agent_test(url_tests tests/url_tests.cpp)
+add_agent_test(http_client_tests tests/http_client_tests.cpp)
+add_agent_test(http_client_parsing_tests tests/http_client_parsing_tests.cpp)

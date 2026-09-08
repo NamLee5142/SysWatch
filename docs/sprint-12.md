@@ -146,6 +146,22 @@ refused, but a `Content-Length` that disagrees with the body cannot.
 *Done when:* it round-trips against the agent's own server in a test, and
 against the backend by hand.
 
+*What it actually cost.* The client itself went roughly as estimated. The
+surprise was underneath it: every agent test checks with `assert()`, and CI
+builds `-DCMAKE_BUILD_TYPE=Release`, which defines `NDEBUG`, which compiles
+`assert()` away. All sixteen suites had been passing by reaching the end of
+`main()`. Found by mutating the client to return a truncated body as a success
+and watching the test written to catch that still pass; fixed in its own commit
+first, because it is not part of the client and the client's tests are worthless
+without it.
+
+With assertions running, two real bugs in the new code appeared at once - a
+host called `127.example.com` counted as loopback, which commit 9 would have
+let a token cross the network in clear to reach; and a refused connection sat
+out the whole timeout on Windows, because Winsock reports a failed connect in
+select's *exception* set rather than its write set. Neither was reachable by
+reading the code, and neither would have failed CI as it stood.
+
 **8. `feat: push a snapshot to a configured backend`**
 A destination URL and a token in the agent's config. Unset means today's
 behaviour exactly: collect, serve on loopback, push nothing.
