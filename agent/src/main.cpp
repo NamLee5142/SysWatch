@@ -2,6 +2,7 @@
 #include <csignal>
 #include <iostream>
 #include "config/AgentConfig.h"
+#include "config/ConfigFile.h"
 #include "runtime/AgentRuntime.h"
 #include "runtime/CommandLine.h"
 #include "service/WindowsService.h"
@@ -50,6 +51,20 @@ int main(int argc, char **argv) {
     agent::AgentConfig config;
     config.collectionInterval = std::chrono::seconds(2);
     config.serverPort = 8080;
+
+    // Read before the mode is decided, so --install and --service see the same
+    // settings a console run does. An absent file leaves the defaults above,
+    // which is the single-machine install and needs no file at all.
+    //
+    // Problems are reported here rather than in the runtime because --install
+    // and --help never reach it, and a typo an operator is told about at
+    // install time is one they fix before the service ever starts.
+    const std::string configPath = config::defaultConfigPath();
+    const config::LoadResult loaded = config::loadInto(configPath, config);
+    for (const std::string &problem : loaded.problems) {
+        std::cerr << "Configuration problem in " << configPath << ": " << problem
+                  << std::endl;
+    }
 
     switch (runtime::parseMode(argc, argv)) {
         case runtime::Mode::Service:
