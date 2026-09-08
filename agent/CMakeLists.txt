@@ -27,6 +27,7 @@ add_library(agent_core STATIC
     src/http/HttpClient.cpp
     src/http/SnapshotJson.cpp
     src/push/SnapshotPusher.cpp
+    src/push/BufferedPusher.cpp
     src/http/Url.cpp
     src/runtime/AgentRuntime.cpp
     src/runtime/CommandLine.cpp
@@ -135,3 +136,4 @@ add_agent_test(http_client_tests tests/http_client_tests.cpp)
 add_agent_test(http_client_parsing_tests tests/http_client_parsing_tests.cpp)
 add_agent_test(snapshot_pusher_tests tests/snapshot_pusher_tests.cpp)
 add_agent_test(push_security_tests tests/push_security_tests.cpp)
+add_agent_test(buffered_pusher_tests tests/buffered_pusher_tests.cpp)

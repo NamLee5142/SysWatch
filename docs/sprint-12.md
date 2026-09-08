@@ -198,6 +198,18 @@ number.
 *Done when:* a backend stopped for five minutes loses no more than the buffer's
 worth, and the agent's memory does not grow while it is down.
 
+*Also finished here:* the push moved off the collection thread. Commit 8 put it
+inline, where an unreachable backend delayed the next collection by the whole
+timeout - ten seconds of blindness every ten seconds, on the machine whose
+network had just gone. Handing the snapshot to the drain thread makes collection
+take as long as collecting, and the buffer is what makes that safe.
+
+*Decided while writing it:* a refused snapshot is discarded rather than retried.
+Retrying sends the same document to the same endpoint for the same answer, and
+the buffer behind it would fill with readings that can never drain - so a
+misconfigured token would cost the recent history as well as the rejected
+reading.
+
 **11. `feat: the agent reads a configuration file`**
 Phase 1's unticked "configuration loader", needed now because there is finally
 something to configure. Still no `--bind`.

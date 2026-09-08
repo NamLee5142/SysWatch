@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdlib>
 #include <string>
 
@@ -69,6 +70,10 @@ struct AgentConfig {
     // See docs/decisions/0001-agents-push-to-the-backend.md. TLS remains a
     // reverse proxy's job, and this is what to turn off once there is one.
     bool allowInsecurePush{false};
+
+    // How many snapshots to hold while the backend is unreachable. See
+    // BufferedPusher for why this is a count rather than a duration.
+    std::size_t pushBufferSize{512};
 
     bool pushesToABackend() const { return !backendUrl.empty(); }
 };

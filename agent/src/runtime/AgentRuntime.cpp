@@ -6,6 +6,7 @@
 #include "http/HTTPServer.h"
 #include "http/Url.h"
 #include "logging/Logger.h"
+#include "push/BufferedPusher.h"
 #include "push/SnapshotPusher.h"
 
 namespace runtime {
@@ -17,11 +18,6 @@ namespace {
 constexpr std::chrono::milliseconds PollInterval{200};
 
 constexpr int ExitBindFailed = 1;
-
-// How many consecutive failures before the log stops repeating itself. A
-// backend that has been down for a day should not have written 86,400 lines
-// saying so; the poller on the other side thins out the same way.
-constexpr int FailuresBeforeQuieting = 5;
 
 } // namespace
 
@@ -43,7 +39,10 @@ int runUntilStopped(const agent::AgentConfig &config,
     // it switches into.
     agent::Agent::SnapshotHandler onSnapshot = callbacks.onSnapshot;
 
-    std::unique_ptr<push::SnapshotPusher> pusher;
+    std::unique_ptr<push::BufferedPusher> pusher;
+    // Kept out here because the startup banner below reports it, and the parsed
+    // URL itself has no business outliving the configuration check.
+    bool pushingOffThisMachine = false;
     if (config.pushesToABackend()) {
         http::Url destination;
         if (!http::Url::parse(config.backendUrl, destination)) {
@@ -84,37 +83,24 @@ int runUntilStopped(const agent::AgentConfig &config,
             return ExitBadConfiguration;
         }
 
-        pusher = std::make_unique<push::SnapshotPusher>(destination, config.backendToken,
-                                                        config.pushTimeoutMs);
+        pushingOffThisMachine = !destination.isLoopback();
 
-        auto failures = std::make_shared<int>(0);
+        pusher = std::make_unique<push::BufferedPusher>(
+            push::SnapshotPusher(destination, config.backendToken, config.pushTimeoutMs),
+            [&log](const std::string &message) { log.info(message); },
+            [&log](const std::string &message) { log.warning(message); },
+            config.pushBufferSize);
+
+        // Chained in front of whatever the caller asked for. offer() copies the
+        // snapshot and returns, so collection takes as long as collecting even
+        // when the backend has been gone for a week.
         auto previous = onSnapshot;
-        onSnapshot = [&log, &pusher, failures, previous](const Snapshot &snapshot) {
+        auto *queue = pusher.get();
+        onSnapshot = [queue, previous](const Snapshot &snapshot) {
             if (previous) {
                 previous(snapshot);
             }
-
-            const auto outcome = pusher->push(snapshot);
-
-            if (outcome.delivered) {
-                if (*failures > 0) {
-                    log.info("Pushing to the backend again after " +
-                             std::to_string(*failures) + " failed attempts");
-                    *failures = 0;
-                }
-                return;
-            }
-
-            ++*failures;
-            // A refusal is always logged: it does not fix itself, and the
-            // machine looks healthy while nothing arrives.
-            if (outcome.refused || *failures <= FailuresBeforeQuieting) {
-                log.warning("Could not push a snapshot (" +
-                            std::to_string(*failures) + " in a row): " + outcome.detail);
-            } else if (*failures == FailuresBeforeQuieting + 1) {
-                log.warning("Still cannot push to the backend; saying so once an hour "
-                            "from here rather than on every collection");
-            }
+            queue->offer(snapshot);
         };
     } else if (!config.backendToken.empty()) {
         log.warning("A backend token is configured but no URL is, so nothing is "
@@ -137,6 +123,10 @@ int runUntilStopped(const agent::AgentConfig &config,
 
     log.info("Listening on 127.0.0.1:" + std::to_string(config.serverPort));
 
+    if (pusher) {
+        pusher->start();
+    }
+
     agent.start();
     log.info("Collecting every " + std::to_string(config.collectionInterval.count()) + "ms");
 
@@ -144,7 +134,7 @@ int runUntilStopped(const agent::AgentConfig &config,
         // The destination, never the token.
         log.info("Pushing snapshots to " + config.backendUrl);
 
-        if (!pusher->destination().isLoopback()) {
+        if (pushingOffThisMachine) {
             // Every start, deliberately. A decision taken once, months ago, on
             // a network that has since changed, should keep announcing itself.
             log.warning("This agent's token crosses the network in clear on "
@@ -164,6 +154,16 @@ int runUntilStopped(const agent::AgentConfig &config,
     log.info("Agent stopping");
 
     agent.stop();
+    // After the agent, so nothing is still being offered, and before the log
+    // goes out of scope, because the drain thread writes to it.
+    if (pusher) {
+        pusher->stop();
+        const auto stats = pusher->stats();
+        log.info("Pushed " + std::to_string(stats.delivered) + " snapshots, dropped " +
+                 std::to_string(stats.dropped) + ", refused " +
+                 std::to_string(stats.refused) + ", " + std::to_string(stats.queued) +
+                 " still held");
+    }
     server.stop();
 
     log.info("Agent stopped");
