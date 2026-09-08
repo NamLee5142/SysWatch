@@ -57,6 +57,11 @@ def create_alert_engine(settings):
             if settings.notify_repeat_hours
             else None
         ),
+        resolve_after=(
+            timedelta(seconds=settings.alert_resolve_after_seconds)
+            if settings.alert_resolve_after_seconds
+            else None
+        ),
     )
 
 

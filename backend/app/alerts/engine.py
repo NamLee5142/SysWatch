@@ -32,7 +32,8 @@ class AlertEngine:
     persistence layer can change beneath it.
     """
 
-    def __init__(self, rule_store, alert_store, notifier=None, repeat_after=None):
+    def __init__(self, rule_store, alert_store, notifier=None, repeat_after=None,
+                 resolve_after=None):
         self._rule_store = rule_store
         self._alert_store = alert_store
         self._notifier = notifier
@@ -40,6 +41,10 @@ class AlertEngine:
         # deciding on somebody's behalf to mail them every four hours is not a
         # default anyone should get by accident.
         self._repeat_after = repeat_after
+        # How long the metric must stay clear before an alert closes. None or
+        # zero restores the old behaviour of resolving on the first clear
+        # reading, which is what the tests that predate this pass.
+        self._resolve_after = resolve_after
 
     def evaluate(self, snapshot, host_name=None) -> EvaluationSummary:
         """Evaluate every enabled rule against one snapshot and persist the result.
@@ -104,6 +109,12 @@ class AlertEngine:
                     self._alert_store.touch(alert_id=existing.id, value=value, at=at)
                     summary.still_firing += 1
 
+                    if existing.clearing_since is not None:
+                        # It dipped clear and came back inside the window. No
+                        # message either way: nobody was told it had recovered,
+                        # so there is nothing to correct.
+                        self._alert_store.mark_breaching(alert_id=existing.id)
+
                     if rule.id not in silenced_ids and self._reminder_due(existing, now):
                         # Re-read: the row the loop is holding was fetched
                         # before touch(), so its value is one tick stale, and a
@@ -113,9 +124,15 @@ class AlertEngine:
                         self._announce(OPENED, current)
                         summary.reminded += 1
             elif existing is not None and value is not None:
-                # Enabled, evaluated, no longer breaching — recovered. A None
-                # value (metric absent) is missing data, not a recovery, so it
-                # falls through and the alert stays open.
+                # Enabled, evaluated, no longer breaching. A None value (metric
+                # absent) is missing data, not a recovery, so it falls through
+                # and the alert stays open.
+                if not self._clear_for_long_enough(existing, at):
+                    if existing.clearing_since is None:
+                        self._alert_store.mark_clearing(alert_id=existing.id, at=at)
+                    summary.still_firing += 1
+                    continue
+
                 resolved = self._alert_store.resolve(
                     alert_id=existing.id, value=value, at=at
                 )
@@ -143,6 +160,28 @@ class AlertEngine:
             )
 
         return summary
+
+    def _clear_for_long_enough(self, alert, at):
+        """Whether a no-longer-breaching alert has been clear long enough to close.
+
+        Measured against the snapshot's collectedAt rather than the wall clock,
+        for the same reason everything else in this method is: the engine has to
+        reach the same conclusion when a test replays a sequence of readings as
+        it does live.
+
+        True immediately when no delay is configured, which is what every test
+        written before this expects and what a deployment that sets the delay to
+        zero gets back.
+        """
+        if not self._resolve_after:
+            return True
+
+        if alert.clearing_since is None:
+            # First clear reading. The countdown starts now, so this one does
+            # not close it - unless the delay is zero, handled above.
+            return False
+
+        return at - alert.clearing_since >= self._resolve_after
 
     def _reminder_due(self, alert, now):
         """Whether this still-firing alert has gone unmentioned long enough.

@@ -140,6 +140,7 @@ the file edited.
 | `SYSWATCH_ALERTS_ENABLED` | `true` | Whether the poller evaluates alert rules after each successful collection |
 | `SYSWATCH_NOTIFY_MIN_SEVERITY` | `warning` | Lowest severity sent to a transport. Below it, alerts are still recorded and logged |
 | `SYSWATCH_NOTIFY_REPEAT_HOURS` | `0` | Re-send a still-firing alert this often. `0` sends once and never again |
+| `SYSWATCH_ALERT_RESOLVE_AFTER_SECONDS` | `120` | How long a metric must stay under its threshold before the alert closes. `0` resolves on the first clear reading |
 | `SYSWATCH_SMTP_HOST` | *(none)* | Unset disables mail entirely |
 | `SYSWATCH_SMTP_PORT` | `587` | |
 | `SYSWATCH_SMTP_USERNAME` | *(none)* | Set with the password, or neither |
@@ -257,6 +258,18 @@ the seed migration only inserts names that are absent.
 Four things can be announced: an alert **opening**, an alert **resolving**, and
 a **reminder** that one is still firing. Nothing else is; an alert that is
 merely still true on the next tick is not news.
+
+**Opening is immediate; closing is not.** An alert resolves only once the
+metric has stayed under its threshold for `SYSWATCH_ALERT_RESOLVE_AFTER_SECONDS`
+(120 by default), and a breach inside that window cancels the countdown without
+announcing anything - nobody was told it had recovered, so there is nothing to
+correct.
+
+That asymmetry is deliberate. A rule at 90% against a machine whose memory sat
+at 90.2, then 89.9, then 90.4 opened and resolved the same alert five times in
+three minutes on a real run: ten messages about one condition that never really
+changed. Delaying the *opening* would have fixed it too, and would have delayed
+hearing about a genuine incident - which is the worse trade.
 
 **Acknowledging** an alert records who and when, and stops its reminders. It
 does not resolve it — the condition is still true, and closing it would discard

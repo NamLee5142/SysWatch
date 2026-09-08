@@ -156,6 +156,18 @@ class AlertRecord(Base):
     value: Mapped[float] = mapped_column(Float, nullable=False)
 
     # All naive UTC, stamped from the snapshot's collectedAt by the engine.
+    # When the metric first stopped breaching, or null while it is breaching.
+    #
+    # An alert does not resolve the moment the value crosses back: a rule at
+    # 90% against a metric hovering at 90.2 and 89.9 opened and resolved five
+    # times in three minutes on a real run, which with mail configured is ten
+    # messages about one condition. The value has to stay clear for
+    # SYSWATCH_ALERT_RESOLVE_AFTER_SECONDS before the alert is closed, and any
+    # breach in between sets this back to null.
+    clearing_since: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

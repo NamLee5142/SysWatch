@@ -350,6 +350,12 @@ SYSWATCH_NOTIFY_REPEAT_HOURS=0
 `MIN_SEVERITY` applies to mail and webhooks only — the log records everything
 regardless, so nothing is lost, it just is not sent.
 
+`ALERT_RESOLVE_AFTER_SECONDS` is why a recovery arrives a couple of minutes
+after the metric drops: an alert closes only once the value has stayed under
+its threshold for that long. Without it a rule at 90% and a machine hovering
+there sends an opened-and-resolved pair every time the number crosses the line -
+measured at five pairs in three minutes on a real run.
+
 `REPEAT_HOURS` is `0` by default, meaning an alert is announced once when it
 opens and once when it resolves. Setting it to `4` re-sends a still-firing
 alert every four hours until somebody acknowledges it or the condition clears.

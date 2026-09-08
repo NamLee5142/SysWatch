@@ -109,6 +109,15 @@ class Settings(BaseSettings):
     # thing once. Acknowledging an alert, or silencing its rule, stops the
     # reminders for it.
     notify_repeat_hours: int = 0
+    # How long a metric must stay under its threshold before the alert closes.
+    #
+    # Not zero, because zero is what produced the problem: a rule at 90% and a
+    # metric hovering at 90.2 and 89.9 opened and resolved five times in three
+    # minutes on a real run - ten messages about one condition that never
+    # really changed. Two minutes is long enough to ride out that oscillation
+    # and short enough that a genuine recovery is reported while somebody still
+    # cares. Set it to 0 for the old behaviour.
+    alert_resolve_after_seconds: int = 120
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

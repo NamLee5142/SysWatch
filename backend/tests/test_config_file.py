@@ -153,6 +153,41 @@ def test_every_setting_appears_in_the_example(field):
     )
 
 
+# The agent reads this same file, and its settings are not in Settings - they
+# are recognised by name in the agent's C++ config loader. Read from there so
+# the two cannot drift: a key added to the loader and not to the example fails
+# here, which is the hole the backend-only version of this test left open when
+# the agent started sharing the file.
+AGENT_LOADER = (
+    BACKEND_ROOT.parent / "agent" / "src" / "config" / "ConfigFile.cpp"
+)
+
+
+def agent_keys():
+    source = AGENT_LOADER.read_text(encoding="utf-8")
+    return sorted(set(re.findall(r'key == "(SYSWATCH_AGENT_[A-Z0-9_]+)"', source)))
+
+
+def test_the_agent_loader_is_where_it_is_expected():
+    """A moved file would make agent_keys() return nothing, silently."""
+    assert AGENT_LOADER.is_file()
+    assert len(agent_keys()) >= 5
+
+
+@pytest.mark.parametrize("name", agent_keys())
+def test_every_agent_setting_appears_in_the_example(name):
+    """The agent's keys, in the file the agent reads.
+
+    Sprint 12 added eight of these and documented none of them, which is the
+    same gap that nearly shipped in v0.11.0 - a config template that does not
+    describe the release's feature. The backend-only version of this test could
+    not see them, because they are not Settings fields.
+    """
+    assert name in EXAMPLE.read_text(encoding="utf-8"), (
+        f"{name} is read by the agent but is not in syswatch.env.example."
+    )
+
+
 def test_the_example_invents_no_settings():
     """The other direction: a name here that config.py does not read.
 
@@ -160,6 +195,9 @@ def test_the_example_invents_no_settings():
     operator sets it and nothing happens.
     """
     known = {f"SYSWATCH_{field.upper()}" for field in Settings.model_fields}
+    # The agent's keys are read by agent/src/config/ConfigFile.cpp, not by
+    # Settings, and belong in this file just as much.
+    known |= set(agent_keys())
     # The variable that names this file is read before Settings exists, so it is
     # not a field, and it is the one name legitimately here that config.py does
     # not declare.

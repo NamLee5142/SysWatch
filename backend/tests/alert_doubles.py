@@ -75,6 +75,7 @@ class FakeAlertStore:
             acknowledged_at=None,
             acknowledged_by=None,
             last_notified_at=None,
+            clearing_since=None,
         )
         self._next_id += 1
         self.rows.append(row)
@@ -95,6 +96,21 @@ class FakeAlertStore:
         # announcing the resolution needs the resolved row; the one it was
         # holding still says the alert is firing.
         return row
+
+    def mark_clearing(self, *, alert_id, at):
+        """Set once, like the real store's WHERE clearing_since IS NULL.
+
+        A fake that moved the timestamp on every clear reading would let the
+        engine's countdown restart forever, and the tests would pass against a
+        store that behaves nothing like the one that ships.
+        """
+        row = self._by_id(alert_id)
+        if row.clearing_since is None:
+            row.clearing_since = at
+        return row
+
+    def mark_breaching(self, *, alert_id):
+        self._by_id(alert_id).clearing_since = None
 
     def acknowledge(self, *, alert_id, username, at=None):
         row = self._by_id(alert_id)

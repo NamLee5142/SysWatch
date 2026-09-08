@@ -208,6 +208,36 @@ class AlertStore:
         with get_session() as session:
             session.execute(statement)
 
+    def mark_clearing(self, *, alert_id, at):
+        """Record that the metric has stopped breaching, without resolving.
+
+        Set once, on the first clear reading. Calling it again while already
+        clearing must not move the timestamp, or a metric that reports clear on
+        every tick would restart its own countdown forever and never resolve.
+        """
+        statement = (
+            update(AlertRecord)
+            .where(AlertRecord.id == alert_id)
+            .where(AlertRecord.clearing_since.is_(None))
+            .values(clearing_since=to_storage_time(at))
+        )
+
+        with get_session() as session:
+            session.execute(statement)
+
+        return self.get(alert_id)
+
+    def mark_breaching(self, *, alert_id):
+        """The metric is over the line again. Cancels any countdown to resolve."""
+        statement = (
+            update(AlertRecord)
+            .where(AlertRecord.id == alert_id)
+            .values(clearing_since=None)
+        )
+
+        with get_session() as session:
+            session.execute(statement)
+
     def resolve(self, *, alert_id, value, at):
         """Close an alert: state -> ok, resolved_at stamped.
 
@@ -336,6 +366,7 @@ class AlertStore:
         if record is None:
             return None
 
+        record.clearing_since = from_storage_time(record.clearing_since)
         record.triggered_at = from_storage_time(record.triggered_at)
         record.resolved_at = from_storage_time(record.resolved_at)
         record.last_seen_at = from_storage_time(record.last_seen_at)
