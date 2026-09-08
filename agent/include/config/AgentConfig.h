@@ -51,6 +51,25 @@ struct AgentConfig {
     // this is.
     int pushTimeoutMs{10000};
 
+    // Send the token over plain HTTP to somewhere that is not this machine.
+    //
+    // False, and it stays false unless somebody decides otherwise. A push
+    // carries the agent's credential in an Authorization header, and over
+    // http:// to another machine that header is readable by anything on the
+    // path - and a stolen agent token writes any history it likes for the host
+    // it names.
+    //
+    // It exists because the alternative is worse. The agent speaks no TLS, so
+    // without this switch a second machine cannot be monitored at all, and an
+    // operator who wants it anyway would reach for something further outside
+    // the project's control than a setting with a warning on it. Loopback does
+    // not need it: a credential that never leaves the machine cannot be
+    // intercepted on the way anywhere.
+    //
+    // See docs/decisions/0001-agents-push-to-the-backend.md. TLS remains a
+    // reverse proxy's job, and this is what to turn off once there is one.
+    bool allowInsecurePush{false};
+
     bool pushesToABackend() const { return !backendUrl.empty(); }
 };
 

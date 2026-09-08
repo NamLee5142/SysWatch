@@ -176,6 +176,22 @@ against `localhost` - `127.0.0.2` and `[::1]` are loopback too.
 *Done when:* an `http://` URL naming anything but loopback is refused at
 startup, with a message that names the setting.
 
+*A conflict in this plan, found while implementing.* Definition of done 1 says
+two machines report to one backend. Item 4 says the agent refuses to send a
+token over plain HTTP off loopback. The out-of-scope list says TLS stays a
+reverse proxy's job, and the client speaks no TLS. Those cannot all hold: with
+`https` unsupported and remote `http` refused, a second machine could not be
+monitored at all, and the sprint's own goal was unreachable.
+
+Resolved with `allowInsecurePush`, false by default. Refusing is the behaviour
+nobody has to choose; the opt-out exists because the alternative is an operator
+reaching for something further outside this project's control than a setting
+with a warning on it. It warns on **every** start, not once at install, because
+the network a decision was taken about is not necessarily the network the agent
+is running on now. It does not make `https` work - conflating "send a credential
+in clear" with "understand TLS" would produce an agent that silently fails every
+push.
+
 **10. `feat: buffer snapshots while the backend is unreachable`**
 Bounded, oldest dropped, with the size a constant and a comment about why that
 number.
@@ -270,7 +286,9 @@ Something always is.
 - **Removing the poller.** It is how the local agent works with no
   configuration, and that is the common case.
 - **TLS termination in the application.** Still a reverse proxy's job. Commit 9
-  refuses plain HTTP; it does not provide the alternative.
+  refuses plain HTTP by default and provides no alternative, only an opt-out -
+  which is the honest description of where this leaves a remote deployment, and
+  the strongest argument for giving the agent TLS in sprint 13.
 - **Disk-backed buffering, batching, compression.** Optimisations for volumes
   this does not have.
 - **A migration path for the alert engine to run centrally per host.** It

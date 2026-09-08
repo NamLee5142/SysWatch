@@ -52,6 +52,29 @@ int runUntilStopped(const agent::AgentConfig &config,
             return ExitBadConfiguration;
         }
 
+        if (destination.scheme == "https") {
+            // Caught here rather than once per push. The client refuses https,
+            // and an agent that starts, reports itself healthy and fails every
+            // push with the same message is harder to read than one that will
+            // not start.
+            log.error("The backend URL is https, which this agent cannot speak. "
+                      "Terminate TLS in front of the backend and give the agent "
+                      "the http:// address behind it.");
+            return ExitBadConfiguration;
+        }
+
+        if (!destination.isLoopback() && !config.allowInsecurePush) {
+            // The rule this commit exists for. Refusing to start is the point:
+            // a warning would be read once, and the token would cross the
+            // network on every collection thereafter.
+            log.error("Refusing to push to " + config.backendUrl +
+                      " over plain HTTP: the agent's token would cross the "
+                      "network in clear on every push. Put TLS in front of the "
+                      "backend, or set allowInsecurePush if the network between "
+                      "these machines is genuinely trusted.");
+            return ExitBadConfiguration;
+        }
+
         if (config.backendToken.empty()) {
             // Refused rather than attempted. Every push would come back 401,
             // and the agent would look like it was working.
@@ -120,6 +143,14 @@ int runUntilStopped(const agent::AgentConfig &config,
     if (pusher) {
         // The destination, never the token.
         log.info("Pushing snapshots to " + config.backendUrl);
+
+        if (!pusher->destination().isLoopback()) {
+            // Every start, deliberately. A decision taken once, months ago, on
+            // a network that has since changed, should keep announcing itself.
+            log.warning("This agent's token crosses the network in clear on "
+                        "every push, because allowInsecurePush is set and the "
+                        "backend is not on this machine.");
+        }
     }
 
     if (callbacks.onReady) {
