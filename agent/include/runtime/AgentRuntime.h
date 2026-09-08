@@ -6,6 +6,11 @@
 
 namespace runtime {
 
+// Returned when the agent is configured to push but cannot: an unparseable
+// backend URL, or a URL with no token. Distinct from the bind failure so a
+// service that will not start says which of the two it is.
+constexpr int ExitBadConfiguration = 3;
+
 // Optional hooks. Both default to doing nothing, which is what the service
 // wants: it has no console to print snapshots to.
 struct Callbacks {

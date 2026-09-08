@@ -31,6 +31,27 @@ struct AgentConfig {
     // relative path would either fail on permissions or leave a log somewhere
     // nobody thinks to look. Empty disables file logging.
     std::string logPath{defaultLogPath()};
+
+    // Where to push snapshots, and what to present when doing it.
+    //
+    // Empty by default, and empty means exactly what the agent did before this
+    // existed: collect, serve on loopback, push nothing. That is the common
+    // case - one machine, monitoring itself, with a backend beside it that
+    // polls - and it must keep working with no configuration at all.
+    //
+    // Both are needed together. A URL with no token would be refused by the
+    // backend on every push; a token with no URL has nowhere to go. Whichever
+    // is set alone is a half-finished configuration and is reported as one.
+    std::string backendUrl;
+    std::string backendToken;
+
+    // Per push. Ten seconds matches the backend's own outbound timeouts, and
+    // the reason for a limit at all is that the push runs on the collection
+    // thread: an unreachable backend delays the next collection by whatever
+    // this is.
+    int pushTimeoutMs{10000};
+
+    bool pushesToABackend() const { return !backendUrl.empty(); }
 };
 
 } // namespace agent

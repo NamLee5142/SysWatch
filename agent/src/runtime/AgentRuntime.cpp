@@ -1,9 +1,12 @@
 #include "runtime/AgentRuntime.h"
 
 #include <chrono>
+#include <memory>
 #include <thread>
 #include "http/HTTPServer.h"
+#include "http/Url.h"
 #include "logging/Logger.h"
+#include "push/SnapshotPusher.h"
 
 namespace runtime {
 
@@ -14,6 +17,11 @@ namespace {
 constexpr std::chrono::milliseconds PollInterval{200};
 
 constexpr int ExitBindFailed = 1;
+
+// How many consecutive failures before the log stops repeating itself. A
+// backend that has been down for a day should not have written 86,400 lines
+// saying so; the poller on the other side thins out the same way.
+constexpr int FailuresBeforeQuieting = 5;
 
 } // namespace
 
@@ -29,7 +37,68 @@ int runUntilStopped(const agent::AgentConfig &config,
         log.warning("No log file; running with console output only");
     }
 
-    agent::Agent agent(config, callbacks.onSnapshot);
+    // Chained in front of whatever the caller asked for, rather than replacing
+    // it: the console entry point still prints, and a pushing agent still
+    // serves loopback. Push is an addition to what the agent does, not a mode
+    // it switches into.
+    agent::Agent::SnapshotHandler onSnapshot = callbacks.onSnapshot;
+
+    std::unique_ptr<push::SnapshotPusher> pusher;
+    if (config.pushesToABackend()) {
+        http::Url destination;
+        if (!http::Url::parse(config.backendUrl, destination)) {
+            log.error("Backend URL could not be parsed: " + config.backendUrl +
+                      " - expected something like http://backend:8000/api/ingest/snapshot");
+            return ExitBadConfiguration;
+        }
+
+        if (config.backendToken.empty()) {
+            // Refused rather than attempted. Every push would come back 401,
+            // and the agent would look like it was working.
+            log.error("A backend URL is configured but no token is. "
+                      "Issue one with 'python -m app.auth.create_agent_token "
+                      "--host <name>' on the backend.");
+            return ExitBadConfiguration;
+        }
+
+        pusher = std::make_unique<push::SnapshotPusher>(destination, config.backendToken,
+                                                        config.pushTimeoutMs);
+
+        auto failures = std::make_shared<int>(0);
+        auto previous = onSnapshot;
+        onSnapshot = [&log, &pusher, failures, previous](const Snapshot &snapshot) {
+            if (previous) {
+                previous(snapshot);
+            }
+
+            const auto outcome = pusher->push(snapshot);
+
+            if (outcome.delivered) {
+                if (*failures > 0) {
+                    log.info("Pushing to the backend again after " +
+                             std::to_string(*failures) + " failed attempts");
+                    *failures = 0;
+                }
+                return;
+            }
+
+            ++*failures;
+            // A refusal is always logged: it does not fix itself, and the
+            // machine looks healthy while nothing arrives.
+            if (outcome.refused || *failures <= FailuresBeforeQuieting) {
+                log.warning("Could not push a snapshot (" +
+                            std::to_string(*failures) + " in a row): " + outcome.detail);
+            } else if (*failures == FailuresBeforeQuieting + 1) {
+                log.warning("Still cannot push to the backend; saying so once an hour "
+                            "from here rather than on every collection");
+            }
+        };
+    } else if (!config.backendToken.empty()) {
+        log.warning("A backend token is configured but no URL is, so nothing is "
+                    "pushed. Set the backend URL, or remove the token.");
+    }
+
+    agent::Agent agent(config, onSnapshot);
     http::HTTPServer server(agent, config.serverPort);
 
     server.start();
@@ -47,6 +116,11 @@ int runUntilStopped(const agent::AgentConfig &config,
 
     agent.start();
     log.info("Collecting every " + std::to_string(config.collectionInterval.count()) + "ms");
+
+    if (pusher) {
+        // The destination, never the token.
+        log.info("Pushing snapshots to " + config.backendUrl);
+    }
 
     if (callbacks.onReady) {
         callbacks.onReady();
