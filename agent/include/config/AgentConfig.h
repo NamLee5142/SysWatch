@@ -67,8 +67,12 @@ struct AgentConfig {
     // not need it: a credential that never leaves the machine cannot be
     // intercepted on the way anywhere.
     //
-    // See docs/decisions/0001-agents-push-to-the-backend.md. TLS remains a
-    // reverse proxy's job, and this is what to turn off once there is one.
+    // Temporary, with a written end date rather than a good intention:
+    // docs/decisions/0002-the-agent-speaks-tls-through-winhttp.md settles that
+    // the agent will make its requests through WinHTTP and speak https, and
+    // docs/sprint-13.md commit 3 deletes this setting in the sprint that makes
+    // it unnecessary. If it is still here after that sprint, something went
+    // wrong that is worth asking about.
     bool allowInsecurePush{false};
 
     // How many snapshots to hold while the backend is unreachable. See

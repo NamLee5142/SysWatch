@@ -192,6 +192,13 @@ is running on now. It does not make `https` work - conflating "send a credential
 in clear" with "understand TLS" would produce an agent that silently fails every
 push.
 
+*Its end date.* A stopgap without one becomes permanent, so this one has a
+written one before it shipped:
+[decisions/0002](decisions/0002-the-agent-speaks-tls-through-winhttp.md) settles
+that the agent will speak TLS through WinHTTP, and
+[sprint-13.md](sprint-13.md) opens with it - commit 3 there removes this setting
+in the sprint that makes it unnecessary.
+
 **10. `feat: buffer snapshots while the backend is unreachable`**
 Bounded, oldest dropped, with the size a constant and a comment about why that
 number.
