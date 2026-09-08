@@ -27,6 +27,7 @@ const SNAPSHOT: Snapshot = {
 const STATUS_UP: Status = {
   backend: 'ok',
   agent: 'up',
+  agentHost: 'devbox',
   pollerRunning: true,
   lastPollAt: new Date().toISOString(),
   lastSuccessAt: new Date().toISOString(),

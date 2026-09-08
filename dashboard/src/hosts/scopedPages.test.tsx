@@ -64,6 +64,7 @@ beforeEach(() => {
   vi.mocked(getStatus).mockResolvedValue({
     backend: 'ok',
     agent: 'up',
+    agentHost: 'devbox',
     pollerRunning: true,
     lastPollAt: '2026-09-08T10:00:00Z',
     lastSuccessAt: '2026-09-08T10:00:00Z',
@@ -135,6 +136,7 @@ describe('switching host', () => {
       hosts: [testHost('devbox'), testHost('buildbox')],
       hostName,
       loading: false,
+      lastCollectedAt: new Date().toISOString(),
       select: setHostName,
     }
 

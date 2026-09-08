@@ -1,6 +1,8 @@
 import warnings
 
 import pytest
+
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from app.db import session as db_session
@@ -34,7 +36,9 @@ def quiet_poller(monkeypatch):
 
         def get_snapshot(self):
             self.calls += 1
-            return "snapshot"
+            # SnapshotService returns a Snapshot, and the poller now reads
+            # the polled agent's host name off it.
+            return SimpleNamespace(systemInfo=SimpleNamespace(hostName="devbox"))
 
     service = FakeService()
     monkeypatch.setattr("app.main.SnapshotService", lambda *args, **kwargs: service)

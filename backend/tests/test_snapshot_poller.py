@@ -3,8 +3,19 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from types import SimpleNamespace
+
 from app.client.errors import AgentConnectionError
 from app.services.snapshot_poller import FAILURES_WORTH_REPEATING, SnapshotPoller
+
+
+def a_snapshot(host_name="devbox"):
+    """The shape SnapshotService actually returns.
+
+    A bare string was enough while nothing read the result; the poller now
+    takes the polled agent's host name off it, so the double has to have one.
+    """
+    return SimpleNamespace(systemInfo=SimpleNamespace(hostName=host_name))
 
 
 class FakeService:
@@ -20,7 +31,7 @@ class FakeService:
             error = self.errors.pop(0)
             if error is not None:
                 raise error
-        return "snapshot"
+        return a_snapshot()
 
 
 async def wait_for(condition, timeout=2.0):
@@ -162,7 +173,7 @@ def test_blocking_call_does_not_stall_the_event_loop():
             def get_snapshot(self):
                 self.calls += 1
                 time.sleep(0.2)  # a slow or hanging agent
-                return "snapshot"
+                return a_snapshot()
 
         poller = SnapshotPoller(BlockingService(), interval_seconds=0.01)
         poller.start()
@@ -316,7 +327,7 @@ def test_alerts_are_evaluated_after_a_successful_poll():
 
     asyncio.run(SnapshotPoller(FakeService(), engine=engine).poll_once())
 
-    assert engine.seen == ["snapshot"]
+    assert len(engine.seen) == 1 and engine.seen[0].systemInfo.hostName == "devbox"
 
 
 def test_alerts_are_not_evaluated_when_the_agent_is_unreachable():

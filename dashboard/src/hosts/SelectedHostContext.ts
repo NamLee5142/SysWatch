@@ -27,6 +27,15 @@ export interface SelectedHostValue {
   hostName: string | null
   /** True until the first /hosts answer, so a selector can avoid flickering. */
   loading: boolean
+  /**
+   * When the selected host's most recent snapshot was collected, or null when
+   * no host has reported.
+   *
+   * This is the only staleness signal that works for every host. /status
+   * answers "can the backend reach the agent it polls", which is meaningful
+   * for exactly one machine and says nothing about the ones that push.
+   */
+  lastCollectedAt: string | null
   select: (hostName: string) => void
 }
 

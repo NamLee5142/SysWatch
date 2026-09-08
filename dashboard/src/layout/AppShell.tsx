@@ -47,7 +47,7 @@ export function AppShell() {
   // themselves poll the latest snapshot. A little duplicated polling against
   // a cheap SQLite read is the cost of that — see the "Data fetching" locked
   // decision for why this app has no shared request cache to avoid it.
-  const { hostName } = useSelectedHost()
+  const { hostName, lastCollectedAt } = useSelectedHost()
   const status = usePolling(getStatus, POLL_INTERVAL_MS)
 
   const agentState = status.data?.agent ?? 'unknown'
@@ -91,7 +91,12 @@ export function AppShell() {
             </span>
           </div>
         </header>
-        <StalenessBanner agentState={agentState} />
+        <StalenessBanner
+          agentState={agentState}
+          agentHost={status.data?.agentHost ?? null}
+          hostName={hostName}
+          lastCollectedAt={lastCollectedAt}
+        />
         {/* Keyed by host so switching machines remounts the page rather than
             refetching under it. useApi keeps the last value through a refetch
             by design - which is right for a poll, and wrong here: it would

@@ -17,6 +17,7 @@ vi.mock('../api/client', () => ({
 const STATUS: Status = {
   backend: 'ok',
   agent: 'up',
+  agentHost: 'devbox',
   pollerRunning: true,
   lastPollAt: new Date().toISOString(),
   lastSuccessAt: new Date().toISOString(),

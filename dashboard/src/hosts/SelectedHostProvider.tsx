@@ -87,14 +87,18 @@ export function SelectedHostProvider({ children }: { children: ReactNode }) {
     return names[0]
   }, [hosts, chosen, names])
 
+  const lastCollectedAt =
+    hosts.find((host) => host.hostName === hostName)?.lastCollectedAt ?? null
+
   const value: SelectedHostValue = useMemo(
     () => ({
       hosts,
       hostName,
       loading: hostsState.loading && hostsState.data === null,
+      lastCollectedAt,
       select,
     }),
-    [hosts, hostName, hostsState.loading, hostsState.data, select],
+    [hosts, hostName, hostsState.loading, hostsState.data, lastCollectedAt, select],
   )
 
   return (

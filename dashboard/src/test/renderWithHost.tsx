@@ -41,6 +41,8 @@ export function renderWithHost(ui: ReactNode, options: Options = {}): RenderResu
     hosts,
     hostName: hostName ?? null,
     loading: false,
+    lastCollectedAt:
+      hosts.find((host) => host.hostName === hostName)?.lastCollectedAt ?? null,
     select,
   }
 

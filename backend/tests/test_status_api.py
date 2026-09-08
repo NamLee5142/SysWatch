@@ -1,6 +1,8 @@
 import asyncio
 
 import pytest
+
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from app.client.errors import AgentConnectionError
@@ -17,7 +19,9 @@ class FakeService:
 
     def get_snapshot(self):
         if self.outcome == "ok":
-            return "snapshot"
+            # The shape SnapshotService returns; /status now reports the
+            # host name off it, so a bare string is no longer enough.
+            return SimpleNamespace(systemInfo=SimpleNamespace(hostName="devbox"))
         if self.outcome == "empty":
             raise LookupError("agent has not collected yet")
         raise AgentConnectionError("connection refused")
@@ -157,3 +161,39 @@ def test_status_reports_unknown_when_polling_is_disabled(monkeypatch):
     assert app.state.poller is None
     assert body["agent"] == "unknown"
     assert body["pollerRunning"] is False
+
+
+# --- whose agent is this? -------------------------------------------------------
+
+
+def test_the_status_names_the_host_it_is_about(client, poller, service):
+    """`agent` describes one machine, and a dashboard has to know which.
+
+    This backend polls a single agent and knows nothing about the reachability
+    of hosts that push to it. Showing "agent unreachable" while somebody is
+    looking at a pushed host would be reporting one machine's outage against
+    another machine's name.
+    """
+    service.outcome = "ok"
+    tick(poller)
+
+    assert client.get("/status").json()["agentHost"] == "devbox"
+
+
+def test_the_host_is_null_before_the_agent_has_ever_answered(client, poller):
+    """Not guessable from configuration: the poller is pointed at a URL, and
+    the name behind it is whatever the agent says once it answers."""
+    assert client.get("/status").json()["agentHost"] is None
+
+
+def test_the_host_survives_an_outage(client, poller, service):
+    """It is what says whose outage this is, so it must not clear with it."""
+    service.outcome = "ok"
+    tick(poller)
+
+    service.outcome = "down"
+    tick(poller)
+
+    body = client.get("/status").json()
+    assert body["agent"] == "down"
+    assert body["agentHost"] == "devbox"

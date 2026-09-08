@@ -68,6 +68,8 @@ export function renderWithAuth(ui: ReactNode, options: Options = {}): RenderResu
     hosts,
     hostName: hostName ?? null,
     loading: hostsLoading,
+    lastCollectedAt:
+      hosts.find((host) => host.hostName === hostName)?.lastCollectedAt ?? null,
     select: selectHost,
   }
 
