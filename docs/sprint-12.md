@@ -291,6 +291,28 @@ the restricted config. Absent means today's single-machine install.
 *Done when:* a clean machine with those two parameters appears in another
 machine's dashboard, and one without them behaves exactly as v0.11.0 did.
 
+Two things this did not plan for, found while writing it:
+
+*The installer rewrites `syswatch.env` on every run*, so "absent means today's
+single-machine install" would have meant "an upgrade silently stops a machine
+pushing". The settings are read back and carried forward, the way the session
+secret already was; `Get-ExistingSessionSecret` became the general
+`Get-ExistingSetting` to do it. Parameters replace the push settings as a
+group rather than merging with what is there, so that changing the URL cannot
+quietly re-point an existing token at a new host.
+
+*`-DataDir` elsewhere means the agent never reads what was written.* The agent
+looks in `%PROGRAMDATA%\SysWatch` unless `SYSWATCH_AGENT_CONFIG_FILE` says
+otherwise, so the installer now sets that machine variable beside
+`SYSWATCH_CONFIG_FILE`, and the uninstaller clears it. This is the one agent
+setting that may come from the environment, and only because it is a path
+rather than a value.
+
+The installer also applies the agent's own startup rules to its parameters -
+both-or-neither, no `https`, no plain HTTP off the machine without
+`-AllowInsecurePush` - so a mistyped address is refused before anything is
+copied rather than becoming a service that will not start.
+
 ### Phase D — Writing it down (commits 18–19)
 
 **18. `docs: document multi-host installation`**
