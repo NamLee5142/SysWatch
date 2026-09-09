@@ -21,6 +21,7 @@ from config import (
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = BACKEND_ROOT / "syswatch.env.example"
+README = BACKEND_ROOT / "README.md"
 
 
 @pytest.fixture
@@ -185,6 +186,22 @@ def test_every_agent_setting_appears_in_the_example(name):
     """
     assert name in EXAMPLE.read_text(encoding="utf-8"), (
         f"{name} is read by the agent but is not in syswatch.env.example."
+    )
+
+
+@pytest.mark.parametrize("name", agent_keys())
+def test_every_agent_setting_appears_in_the_backend_readme(name):
+    """The same drift, one document over.
+
+    README.md carries its own table of these, because "adding a second machine
+    needs no reading of source" was the point of documenting them at all. A
+    second copy is a second thing to forget, and this file's own history is the
+    argument: the settings were added, documented in two READMEs, and left out
+    of the template until a test went looking.
+    """
+    assert name in README.read_text(encoding="utf-8"), (
+        f"{name} is read by the agent but is not in backend/README.md. "
+        "It is documented where an operator will not look for it."
     )
 
 

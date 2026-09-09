@@ -193,6 +193,34 @@ is not rejected — it has no commas, so it is read as one literal origin string
 the dashboard silently blocked by CORS with nothing in the logs pointing at
 why; the fix is always the comma-separated spelling above, never JSON.
 
+### Settings the agent reads
+
+`syswatch.env` is shared: the C++ agent on the same machine reads it too, for
+the keys below. **These are not backend settings** - they are not in `Settings`,
+the backend ignores them, and they exist here only because one restricted file
+is better than two.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SYSWATCH_AGENT_BACKEND_URL` | *(none)* | Full ingest endpoint this machine pushes to, like `http://backend:8000/api/ingest/snapshot`. Empty means it pushes nothing and only serves loopback |
+| `SYSWATCH_AGENT_TOKEN` | *(none)* | The credential presented on every push. Required once the URL is set |
+| `SYSWATCH_AGENT_ALLOW_INSECURE_PUSH` | `false` | Permit plain HTTP to a host that is not this machine. Temporary; see [decisions/0002](../docs/decisions/0002-the-agent-speaks-tls-through-winhttp.md) |
+| `SYSWATCH_AGENT_PORT` | `8080` | Port the agent's own listener binds. **There is no bind-address key**, here or anywhere - it is always `127.0.0.1` |
+| `SYSWATCH_AGENT_INTERVAL_SECONDS` | `2` | Seconds between collections |
+| `SYSWATCH_AGENT_LOG_FILE` | `%PROGRAMDATA%\SysWatch\logs\agent.log` | Empty disables file logging |
+| `SYSWATCH_AGENT_PUSH_TIMEOUT_SECONDS` | `10` | Per push. The push has its own thread, so this bounds how long a dead backend is waited on, not collection |
+| `SYSWATCH_AGENT_PUSH_BUFFER` | `512` | Snapshots held in memory while the backend is unreachable. Lost on restart |
+
+Note the asymmetry with everything above: **no agent setting can come from an
+environment variable.** A machine-wide variable on Windows is readable by every
+account on it, which is no place for a token. The single exception is
+`SYSWATCH_AGENT_CONFIG_FILE`, which moves the *path* the agent reads and is set
+by the installer - a path is not a secret. Unrecognised keys are ignored in
+silence, because most of this file belongs to the backend.
+
+Adding a machine is [Monitoring a second
+machine](../docs/deployment.md#monitoring-a-second-machine).
+
 `SYSWATCH_DATABASE_URL` is read by both the application and Alembic. The value
 in `alembic.ini` is deliberately blank and has no effect, so migrations can
 never run against a different database than the app.
@@ -318,9 +346,15 @@ startup refusal means.
 
 ## Authentication
 
-Every endpoint except `GET /health` and `GET /` requires a session. The agent
-knows nothing about any of this — it stays on loopback with no authentication of
-its own, which is exactly why login belongs here.
+Every endpoint except `GET /health`, `GET /ready` and `GET /` requires a
+credential, and there are two kinds. People get a **session cookie** from
+`POST /auth/login`. Agents pushing snapshots present a **bearer token** on
+`POST /ingest/snapshot`, and nothing else.
+
+The agent the backend *polls* still knows nothing about any of this — it stays
+on loopback with no authentication of its own, which is exactly why login
+belongs here. An agent that pushes has left the machine, so it needs a
+credential of its own.
 
 ```text
 POST /auth/login ─▶ Argon2id verify ─▶ session row ─▶ Set-Cookie (HttpOnly)
@@ -330,7 +364,19 @@ POST /auth/login ─▶ Argon2id verify ─▶ session row ─▶ Set-Cookie (Ht
                 ▼
    require_authenticated_user ─▶ 401
    require_admin              ─▶ 403
+
+POST /ingest/snapshot
+   Authorization: Bearer <token> ─▶ HMAC-SHA256 ─▶ agent_tokens row
+                │
+                ▼
+   require_agent ─▶ 401 + WWW-Authenticate: Bearer
 ```
+
+`require_agent` ignores `SYSWATCH_AUTH_ENABLED` deliberately. That switch opens
+the read API for a development session; it must never open a write path that
+takes data from the network. Every way of failing it — absent, malformed,
+unknown, revoked — is the same `401`, so the response cannot be used to sort
+real tokens from invented ones.
 
 ### What is stored
 
@@ -631,12 +677,13 @@ request shape offered to anyone who can reach the port.
 | `GET /alerts`, `/alerts/active`, `/alerts/{id}` | Database | Still works |
 | `GET`/`POST`/`PUT`/`DELETE /alert-rules` | Database | Still works |
 | `POST /auth/login`, `/auth/logout`, `GET /auth/me` | Database | Still works |
+| `POST /ingest/snapshot` | Pushed by a remote agent | Unaffected - it is a different machine's agent |
 | `GET /ready` | Database | Still works; reports what is missing |
 
 Everything above except `GET /health`, `GET /ready` and `GET /` requires a
-session; the
-three alert-rule writes additionally require the `admin` role. See
-[Authentication](#authentication).
+session; the three alert-rule writes additionally require the `admin` role.
+`POST /ingest/snapshot` is the exception in the other direction - it takes a
+bearer token and never a session. See [Authentication](#authentication).
 
 ### `GET /`
 
@@ -884,6 +931,51 @@ Never contacts the agent.
 An empty `items` list is a `200`, not a `404` — a fresh database is a valid
 state, and the dashboard renders an empty selector rather than an error page
 for it.
+
+### `POST /ingest/snapshot`
+
+Where an agent on another machine files its snapshots. The only write path into
+`snapshots` that is not the poller, and the only route authenticated by a
+bearer token rather than a session cookie.
+
+```text
+POST /api/ingest/snapshot
+Authorization: Bearer <agent token>
+Content-Type: application/json
+```
+
+The body is the same snapshot shape `GET /snapshot` returns. The response is
+deliberately not the stored row - the agent already has the data:
+
+```json
+{"hostName": "buildbox", "stored": true}
+```
+
+`202`, not `201`. There is no resource to hand the agent a URL for, and it has
+no use for one; it pushed a reading, and the answer is that the reading was
+taken.
+
+**A duplicate is also a `202`, with `stored: false`.** `(host_name,
+collected_at)` is unique, so an agent that retried a request whose response it
+never saw writes nothing the second time. Calling that an error would make it
+retry again.
+
+**The host comes from the token, never the payload.** The snapshot is filed
+under the `host_name` the credential names, and so is any alert it raises. The
+`systemInfo.hostName` inside the body is self-reported: trusting it would let
+one compromised agent overwrite any other machine's history. A mismatch between
+the two is logged once per pair at `INFO` — usually a machine that was renamed,
+occasionally something worth looking at, never often enough to fill a log.
+
+| Status | When |
+| --- | --- |
+| `202` | Stored, or already present |
+| `401` | No credential, or one that is unknown, malformed or revoked |
+| `422` | The body is not a snapshot |
+
+Issuing the credential is
+[`create_agent_token`](../docs/deployment.md#monitoring-a-second-machine); the
+table it writes to is [`agent_tokens`](#agent_tokens).
 
 ### `GET /alerts`
 

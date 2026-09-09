@@ -16,7 +16,8 @@ C:\Program Files\SysWatch\          the program. Replaced wholesale on upgrade.
 
 C:\ProgramData\SysWatch\            the data. Never touched by an upgrade.
     syswatch.db                     snapshots, alerts, accounts, sessions
-    syswatch.env                    configuration, including the session secret
+    syswatch.env                    configuration: the session secret, and
+                                    the agent's token if this machine pushes
     logs\                           agent.log and syswatch.log, both rotating
     backups\                        written by the installer and on demand
 ```
@@ -86,13 +87,18 @@ Useful parameters:
 | `-Port` | `8000` | When 8000 is taken |
 | `-SkipServices` | off | Staging an install without touching the SCM. Needs no administrator rights. |
 | `-SkipAdminAccount` | off | Unattended installs; create the account afterwards |
+| `-BackendUrl` | *(none)* | Report to a backend on another machine. See [Monitoring a second machine](#monitoring-a-second-machine) |
+| `-AgentToken` | *(none)* | The credential that goes with it. Both, or neither |
+| `-AllowInsecurePush` | off | Required to push over plain HTTP to anywhere but this machine |
 
 ### After installing: open a new terminal
 
 The installer sets `SYSWATCH_CONFIG_FILE` as a **machine** environment
-variable. Windows hands that to processes started afterwards, so services get
-it, but the terminal you ran the installer from does not - it inherited its
-environment before the variable existed.
+variable, and `SYSWATCH_AGENT_CONFIG_FILE` beside it - the same path, because
+the agent and the backend read the same file. Windows hands those to processes
+started afterwards, so services get them, but the terminal you ran the
+installer from does not - it inherited its environment before the variables
+existed.
 
 If you want to run backend commands from that same window, set it yourself:
 
@@ -112,6 +118,180 @@ outcomes to debug.
 Administrators and SYSTEM. Any command that reads configuration - `serve.py`,
 `create_admin`, `app.db.backup` - must therefore run elevated. A normal prompt
 gets a permission error on the config file, not a helpful message.
+
+## Monitoring a second machine
+
+One backend, many machines. The first machine runs a backend that polls the
+agent beside it on loopback; every machine after that runs an agent which
+**pushes** its snapshots to that backend instead.
+
+The direction is the point. The agent has no authentication of its own and
+binds `127.0.0.1` only, so it can never be polled across a network - see
+[decisions/0001](decisions/0001-agents-push-to-the-backend.md). Pushing means
+the monitored machine opens an outbound connection and nothing new listens.
+
+```text
+  backend machine                     second machine
+  +---------------------+             +---------------------+
+  | agent  127.0.0.1 <--+-- polled    | agent               |
+  | backend :8000 <-----+-------------+-- pushes            |
+  | dashboard           |   POST      +---------------------+
+  +---------------------+   /api/ingest/snapshot
+                            Authorization: Bearer <token>
+```
+
+### Before you start: the backend has to be reachable
+
+The backend binds `127.0.0.1` by default, so nothing outside its own machine
+can reach it. That is the first thing to fix, and it is a decision about
+exposure rather than a setting to flip without thinking:
+
+- **A reverse proxy in front**, forwarding to `127.0.0.1:8000`. This is the
+  right answer, and the one that also gives the dashboard TLS.
+- **Or `SYSWATCH_HOST=0.0.0.0`** in `syswatch.env`, which puts the backend
+  itself on the network. Only sane on a trusted segment: session cookies would
+  then cross it in clear.
+
+Whichever you choose, the address the agent is given must be the **full ingest
+endpoint** - `http://backend:8000/api/ingest/snapshot`, not just the host.
+
+### 1. Issue a token, on the backend machine
+
+From an **elevated** prompt, in the install's backend directory:
+
+```text
+cd "C:\Program Files\SysWatch\backend"
+..\.venv\Scripts\python.exe -m app.auth.create_agent_token --host buildbox --description "shop floor PC"
+```
+
+```text
+Agent token 1 issued for 'buildbox'.
+
+hS9Xq2N_p0LmVt7ZcJ4YbRdE1oKgAu3WxFiT6vQnMzs
+
+Shown once. It is stored as a hash, so this cannot be recovered - issue a new
+one if it is lost.
+Put it in the agent's configuration on that machine, in a file only
+Administrators and SYSTEM can read.
+```
+
+`--host` is the name the machine will appear under in the dashboard. **It is
+the host identity**: snapshots are filed under the name the token carries, not
+under the hostname inside the payload, so one compromised agent cannot write
+another machine's history. It does not have to match the machine's real
+hostname, but it will confuse whoever reads it in a year if it does not.
+
+There is deliberately no `--token` flag to supply your own. An argument like
+that lands in the shell's history file and in the process list, where it
+outlives the terminal by a long way.
+
+### 2. Install on the second machine with it
+
+From an **elevated** prompt on the new machine:
+
+```text
+powershell -ExecutionPolicy Bypass -File deploy\Install-SysWatch.ps1 `
+    -BackendUrl http://backend:8000/api/ingest/snapshot `
+    -AgentToken hS9Xq2N_p0LmVt7ZcJ4YbRdE1oKgAu3WxFiT6vQnMzs `
+    -AllowInsecurePush
+```
+
+The two go together: a URL with no token is refused, and so is a token with no
+URL. They are written into `syswatch.env` on that machine, which the installer
+restricts to Administrators and SYSTEM.
+
+`-AllowInsecurePush` is required because the agent speaks no TLS yet, so the
+token crosses the network in clear on every push. The installer refuses without
+it rather than warning, because a warning is read once and the token is sent on
+every collection - every two seconds, by default. See [TLS](#tls) below, and
+[decisions/0002](decisions/0002-the-agent-speaks-tls-through-winhttp.md) for
+when this goes away.
+
+Add `-SkipAdminAccount` too, unless you want the account prompt: the second
+machine gets its own backend, and an account on it logs into nothing you would
+use.
+
+**That second backend and dashboard are not needed.** There is no agent-only
+install today: the script installs all three components, and the local backend
+polls the local agent as well. It is harmless - that machine's data reaches the
+real backend either way - but it is a service and a port doing nothing useful.
+Stop and disable it if you would rather not have it:
+
+```text
+sc.exe config SysWatchBackend start= disabled
+sc.exe stop SysWatchBackend
+```
+
+### 3. Check it arrived
+
+Three places, in increasing order of effort:
+
+- **The dashboard.** The host selector on the backend machine gains the new
+  name within a collection interval or two.
+- **The token's last-seen time**, on the backend machine:
+
+  ```text
+  ..\.venv\Scripts\python.exe -m app.auth.create_agent_token --list
+  ```
+
+  ```text
+    ID  HOST                     STATE    LAST SEEN              DESCRIPTION
+     1  buildbox                 enabled  2026-09-09T08:14:02    shop floor PC
+  ```
+
+  `never` means nothing has arrived with that token yet.
+- **`agent.log` on the second machine**, at
+  `C:\ProgramData\SysWatch\logs\agent.log`. A working agent logs
+  `Pushing snapshots to <url>` once at startup. A broken one says why:
+
+  | Line | Means |
+  | --- | --- |
+  | `Refusing to push to ... over plain HTTP` | `-AllowInsecurePush` was not set |
+  | `A backend URL is configured but no token is` | The token key is missing from `syswatch.env` |
+  | `The backend URL is https, which this agent cannot speak` | Not yet - see [TLS](#tls) |
+  | `Could not push a snapshot (N in a row, M held)` | The backend is unreachable. Snapshots are held, not lost |
+  | `401` on every push | The token is revoked, or was issued under a different `SYSWATCH_SESSION_SECRET` |
+
+An unreachable backend is buffered, not dropped: the agent holds the most
+recent 512 snapshots and sends them when the backend comes back. A restart
+loses the buffer - it is memory, not a spool file.
+
+### Rotating and revoking
+
+A host may hold more than one enabled token at a time, which is what makes
+rotation possible without a gap:
+
+```text
+python -m app.auth.create_agent_token --host buildbox      # issue the new one
+                                                           # deploy it, then:
+python -m app.auth.create_agent_token --revoke 1           # disable the old one
+```
+
+Revoking is a flag on the row, not a delete, so the record of what existed
+survives. `--restore <id>` undoes it.
+
+Revoking every token for a host does not remove its history; the snapshots
+stay. `SYSWATCH_SESSION_SECRET` is the bigger lever - the tokens are HMACs
+under it, so changing it invalidates every agent token at once, along with
+every session.
+
+### Upgrading a pushing machine
+
+Run the installer again with no push parameters and the existing settings are
+kept:
+
+```text
+    Keeping the existing session secret.
+    Keeping the existing push configuration.
+```
+
+Passing `-BackendUrl` and `-AgentToken` again replaces them as a pair. There is
+no way to change only the URL - that is deliberate, so that re-pointing a
+machine cannot silently send an existing credential to a new host.
+
+To stop a machine pushing, remove the three `SYSWATCH_AGENT_*` lines from its
+`syswatch.env` and restart `SysWatchAgent`. The agent goes back to serving
+loopback only.
 
 ## The backend as a service
 
@@ -476,9 +656,22 @@ whole story:
 - The backend binds `127.0.0.1` by default. Session cookies carry `Secure`
   outside dev mode, so a browser will only return them over HTTPS or to
   localhost.
+- **A pushing agent speaks plain HTTP, and cannot yet do otherwise.** Its HTTP
+  client is hand-rolled on Winsock and has no TLS in it, so
+  `-AllowInsecurePush` is currently the only way to monitor a second machine.
+  The token, and the process names, interfaces and OS version in every push,
+  cross the network readable.
 
 To reach it from another machine, put a reverse proxy in front terminating TLS
 and forwarding to `127.0.0.1:8000`, and set `SYSWATCH_CORS_ORIGINS` only if the
 dashboard is served from somewhere other than the backend. Exposing the backend
 directly on a routable address over plain HTTP would send session cookies
 across the network in clear.
+
+That leaves a gap today: browsers can be given TLS, agents cannot, so a
+multi-machine deployment needs a network segment you would be willing to send
+a credential across. It is a stopgap with an end date rather than a position -
+[decisions/0002](decisions/0002-the-agent-speaks-tls-through-winhttp.md)
+settles that the agent moves to WinHTTP and `https://`, and
+[sprint-13](sprint-13.md) removes `allowInsecurePush` entirely in the sprint
+that makes it unnecessary.

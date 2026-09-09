@@ -46,10 +46,12 @@ struct AgentConfig {
     std::string backendUrl;
     std::string backendToken;
 
-    // Per push. Ten seconds matches the backend's own outbound timeouts, and
-    // the reason for a limit at all is that the push runs on the collection
-    // thread: an unreachable backend delays the next collection by whatever
-    // this is.
+    // Per push. Ten seconds matches the backend's own outbound timeouts.
+    //
+    // This no longer bounds a delay to collection: BufferedPusher moved the
+    // push onto a thread of its own, so an unreachable backend costs the
+    // collection loop nothing. What it bounds is how long the pusher waits on
+    // a dead backend before giving up on that attempt and retrying.
     int pushTimeoutMs{10000};
 
     // Send the token over plain HTTP to somewhere that is not this machine.

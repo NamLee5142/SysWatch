@@ -321,6 +321,21 @@ it, what to check. The backend README gains the ingestion endpoint and the
 agent settings.
 *Done when:* adding a second machine needs no reading of source.
 
+Writing it down found two things the code had got wrong. `AgentConfig.h` still
+said the push runs on the collection thread and that the timeout bounds a
+delay to collection - true of commit 8, untrue since `BufferedPusher` gave it
+a thread of its own in commit 11, and `syswatch.env.example` already said the
+opposite. The comment is corrected, and the contradiction is the argument for
+the second thing: `README.md`'s new table of agent settings is now checked
+against the agent's own loader by a test, the way `syswatch.env.example`
+already was.
+
+The guide also has to say what the installer cannot do. The backend binds
+`127.0.0.1`, so a second machine cannot reach it until a proxy or
+`SYSWATCH_HOST` says otherwise; and there is no agent-only install, so every
+pushing machine also gets a backend and dashboard it does not need. Both are
+written down as the rough edges they are rather than left to be discovered.
+
 **19. `docs: record what pushing cost`**
 A second decision record, superseding nothing, describing what 0001 got wrong.
 Something always is.
