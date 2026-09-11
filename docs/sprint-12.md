@@ -411,16 +411,21 @@ Against the definition of done above.
 | 5 | Single-machine install unchanged | Met, and exercised: an upgrade with no push parameters keeps behaving as v0.11.0 did |
 | 6 | A backend outage loses at most the buffer | Met. The buffer is memory, so a restart during an outage loses it too |
 | 7 | Every suite green on all four CI jobs | Met at each commit |
-| 8 | The install workflow covers a pushing install | **Not met.** `install.yml` still installs only the plain single-machine case |
+| 8 | The install workflow covers a pushing install | Met. `install.yml` issues a token, reinstalls with it, and asserts a snapshot arrived under the token's host |
 | 9 | `deployment.md` describes adding a second machine | Met |
 | 10 | Verified between two real machines | **Not met.** Verified between two processes and against a real backend, which is not the same thing |
 
-**8 and 10 are the sprint's honest gap**, and they are the same gap: nothing
-has yet installed a pushing agent on a machine that is not this one. Every
-other line above is built and tested; what is missing is the evidence that it
-works where it is meant to. Neither is a code change, and both should be closed
-before this is called done - 10 by hand, 8 in CI, where a second Windows runner
-can be given a token and pointed at the first.
+**10 is the sprint's honest gap.** Nothing has yet installed a pushing agent on
+a machine that is not this one. Every other line above is built and tested;
+what is missing is evidence that it works where it is meant to, and no amount
+of CI on one runner supplies that.
+
+8 was closed after the fact, by giving `install.yml` the other kind of install:
+a token from the shipped command, an install configured with it, and an
+assertion that a snapshot arrived filed under the token's host rather than the
+machine's. That covers every link in the chain except the network between two
+machines - which is exactly what 10 is for, and why closing 8 does not close
+it.
 
 The rest of what this sprint cost, including which of decision 0001's
 assumptions did not survive contact, is in
