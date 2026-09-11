@@ -15,3 +15,4 @@ Superseded records stay. The history of a decision is part of it.
 | --- | --- | --- |
 | [0001](0001-agents-push-to-the-backend.md) | Agents push to the backend | Accepted, sprint 11 |
 | [0002](0002-the-agent-speaks-tls-through-winhttp.md) | The agent speaks TLS, through WinHTTP | Accepted, sprint 12; implemented sprint 13 |
+| [0003](0003-what-pushing-cost.md) | What pushing cost | Accepted, sprint 12; a retrospective on 0001 |

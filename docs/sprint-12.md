@@ -390,3 +390,38 @@ five.
 
 **30–40 is the honest expectation**, and the first real risk to that number is
 commit 7, not the security work.
+
+It ran at 21: nineteen planned, commit 5 folded into commit 4, and three added
+- the `NDEBUG` fix split out of commit 7, an alert-flapping bug found by a
+mid-sprint audit, and decision 0002. Why the hedge was wrong is in
+[decisions/0003](decisions/0003-what-pushing-cost.md).
+
+---
+
+## How it closed
+
+Against the definition of done above.
+
+| | | |
+| --- | --- | --- |
+| 1 | Two machines, told apart | **Partly.** The mechanism works and the dashboard separates hosts; not yet demonstrated on two real machines. Blocked on 10 |
+| 2 | Token per host, revocable, unrecoverable | Met |
+| 3 | One host's token cannot write another's history | Met, in both places it is read - the snapshot row and the alert |
+| 4 | Refuses a token over plain HTTP off loopback | Met, with `allowInsecurePush` as the deliberate opt-out |
+| 5 | Single-machine install unchanged | Met, and exercised: an upgrade with no push parameters keeps behaving as v0.11.0 did |
+| 6 | A backend outage loses at most the buffer | Met. The buffer is memory, so a restart during an outage loses it too |
+| 7 | Every suite green on all four CI jobs | Met at each commit |
+| 8 | The install workflow covers a pushing install | **Not met.** `install.yml` still installs only the plain single-machine case |
+| 9 | `deployment.md` describes adding a second machine | Met |
+| 10 | Verified between two real machines | **Not met.** Verified between two processes and against a real backend, which is not the same thing |
+
+**8 and 10 are the sprint's honest gap**, and they are the same gap: nothing
+has yet installed a pushing agent on a machine that is not this one. Every
+other line above is built and tested; what is missing is the evidence that it
+works where it is meant to. Neither is a code change, and both should be closed
+before this is called done - 10 by hand, 8 in CI, where a second Windows runner
+can be given a token and pointed at the first.
+
+The rest of what this sprint cost, including which of decision 0001's
+assumptions did not survive contact, is in
+[decisions/0003](decisions/0003-what-pushing-cost.md).
