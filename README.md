@@ -152,19 +152,30 @@ directory out of anywhere world-readable.
 - [x] Disk collector
 - [x] Network collector
 - [x] Process collector
-- [ ] Configuration loader
+- [x] Configuration loader
 - [x] JSON serialization
 - [ ] Secure communication module
 
-The three left unticked are genuinely absent, not merely unpolished. Every
+The two left unticked are genuinely absent, not merely unpolished. Every
 collector is `#if defined(_WIN32)` with a stub returning zero on the other
-branch, which is a placeholder rather than an abstraction layer. The agent
-reads no configuration at all - `AgentConfig` carries compiled-in defaults, and
-`CommandLine.cpp` accepts a mode and nothing else, deliberately: there is no
-`--bind` flag because the agent must never listen anywhere but `127.0.0.1`.
-Secure communication is the same answer from the other direction - it is
-unnecessary while the only listener is on loopback, and it is what a second
-machine would need first.
+branch, which is a placeholder rather than an abstraction layer.
+
+The configuration loader arrived in sprint 12. `config/ConfigFile.cpp` reads
+`%PROGRAMDATA%\SysWatch\syswatch.env`, the same restricted file the backend
+uses, and it is a file and nothing else: no agent setting comes from an
+environment variable, because a machine-wide variable on Windows is readable by
+every account on it and one of these settings is a credential.
+`CommandLine.cpp` still accepts a mode and nothing else, and there is still no
+`--bind` flag or configuration key, because the agent must never listen
+anywhere but `127.0.0.1`.
+
+Secure communication is the one that got worse rather than better. It was
+unnecessary while the only listener was on loopback; now that the agent pushes
+to a backend on another machine it is necessary and still missing, which is
+what `allowInsecurePush` exists to admit rather than hide. See
+[decisions/0002](docs/decisions/0002-the-agent-speaks-tls-through-winhttp.md)
+and [sprint 13](docs/sprint-13.md), which deletes that setting in the sprint
+that makes it unnecessary.
 
 ---
 
@@ -178,10 +189,18 @@ machine would need first.
 - [x] Logging
 - [x] Configuration management
 
-Agent registration stays unticked because nothing registers: the backend polls
-one agent at a URL it is configured with. What replaces it is the subject of
-`docs/sprint-11.md`, which settles on the agent pushing to the backend rather
-than the backend discovering agents.
+Agent registration stays unticked because nothing registers *itself*. Sprint 12
+built the half that was missing: agents push to an authenticated ingestion
+endpoint, each holding a token issued per host with
+`python -m app.auth.create_agent_token`, and a snapshot is filed under the host
+its credential names rather than the one inside the payload.
+
+What is still absent is enrolment. A token is issued by hand and handed to the
+installer - workable for tens of machines, not for hundreds - and an endpoint
+that accepted an unknown agent would be the opposite of the identity decision
+above. See [decisions/0001](docs/decisions/0001-agents-push-to-the-backend.md)
+for the choice and [0003](docs/decisions/0003-what-pushing-cost.md) for what it
+cost.
 
 ---
 
@@ -260,6 +279,7 @@ One tag per release, each on the merge that ended its sprint.
 | `v0.8.0` | `daba028` | alert engine |
 | `v0.9.0` | `6a28b03` | security and authentication |
 | `v0.10.0` | `8c0309a` | production hardening |
+| `v0.11.0` | `ba4b4c4` | alert delivery |
 
 Sprints 5 to 9 were first tagged `v.0.5.0`, with a stray dot, and re-tagged
 without it. `origin` and the GitHub releases have been correct since; a clone

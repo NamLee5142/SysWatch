@@ -17,6 +17,7 @@ vi.mock('./api/client', () => ({
   getLatestSnapshot: vi.fn(() => new Promise(() => {})),
   getStatus: vi.fn(() => new Promise(() => {})),
   getActiveAlerts: vi.fn(() => new Promise(() => {})),
+  getHosts: vi.fn(() => new Promise(() => {})),
 }))
 
 beforeEach(() => {

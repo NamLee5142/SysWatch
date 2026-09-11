@@ -44,11 +44,38 @@
     run offers to install and defaults to no, and an unattended run refuses
     and says what is missing.
 
+.PARAMETER BackendUrl
+    The ingest endpoint this machine's agent pushes its snapshots to, on a
+    backend somewhere else. The full URL, like
+    http://backend:8000/api/ingest/snapshot
+
+.PARAMETER AgentToken
+    The credential the agent presents when pushing. Issue one on the backend:
+        python -m app.auth.create_agent_token --host <name>
+
+    -BackendUrl and -AgentToken go together, and the pair replaces whatever
+    this machine was pushing before. Leaving both out is not "turn pushing
+    off": an upgrade with neither keeps the settings already in the config
+    file, and a first install with neither is the single-machine install this
+    script has always done, where the agent serves 127.0.0.1 and the backend
+    beside it polls.
+
+.PARAMETER AllowInsecurePush
+    Permit an http:// backend that is not this machine. The agent speaks no
+    TLS yet, so the token would cross the network readable by anything on the
+    path. See docs/decisions/0002-the-agent-speaks-tls-through-winhttp.md
+
 .EXAMPLE
     .\Install-SysWatch.ps1
 
 .EXAMPLE
     .\Install-SysWatch.ps1 -InstallRoot D:\SysWatch -Port 9000
+
+.EXAMPLE
+    Report to a backend on another machine, over a trusted network:
+
+    .\Install-SysWatch.ps1 -BackendUrl http://backend:8000/api/ingest/snapshot `
+        -AgentToken $token -AllowInsecurePush
 #>
 [CmdletBinding()]
 param(
@@ -58,7 +85,10 @@ param(
     [string]$SourceRoot,
     [switch]$SkipServices,
     [switch]$SkipAdminAccount,
-    [switch]$InstallPrerequisites
+    [switch]$InstallPrerequisites,
+    [string]$BackendUrl,
+    [string]$AgentToken,
+    [switch]$AllowInsecurePush
 )
 
 $ErrorActionPreference = 'Stop'
@@ -187,15 +217,25 @@ function New-SessionSecret {
     return [Convert]::ToBase64String($bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=')
 }
 
-function Get-ExistingSessionSecret {
+function Get-ExistingSetting {
     <#
-        The secret already in use, or $null.
+        One setting already in the config file, or $null.
 
-        Only an uncommented assignment counts. syswatch.env.example ships the
+        This script rewrites the whole file on every run, so anything it does
+        not deliberately carry forward is dropped on upgrade. That is silent
+        by construction, which is why the settings it matters for are read
+        back through here rather than assumed.
+
+        Only an uncommented assignment counts. syswatch.env.example ships every
         key commented out, and treating that as "already configured" would
         install a backend that cannot start.
     #>
-    param([string]$ConfigFile)
+    param(
+        [string]$ConfigFile,
+        [string]$Name,
+        # What being wrong about this would cost, for the message below.
+        [string]$Consequence
+    )
 
     if (-not (Test-Path -LiteralPath $ConfigFile)) { return $null }
 
@@ -203,20 +243,42 @@ function Get-ExistingSessionSecret {
         $lines = Get-Content -LiteralPath $ConfigFile -ErrorAction Stop
     } catch {
         # The file is deliberately readable only by Administrators and SYSTEM.
-        # Guessing that there is no secret here would generate a new one and
-        # sign out every user, so this stops instead.
-        throw ("Cannot read $ConfigFile, which holds the session secret. " +
-               "Re-run from an elevated prompt: continuing would generate a new " +
-               "secret and sign out every user.")
+        # Treating unreadable as absent would drop the setting on the write
+        # below, so this stops instead.
+        throw ("Cannot read $ConfigFile, which holds $Name. " +
+               "Re-run from an elevated prompt: $Consequence")
     }
 
+    $assignment = '^\s*' + [regex]::Escape($Name) + '\s*=\s*(\S.*)$'
     foreach ($line in $lines) {
-        if ($line -match '^\s*SYSWATCH_SESSION_SECRET\s*=\s*(\S.*)$') {
+        if ($line -match $assignment) {
             return $matches[1].Trim()
         }
     }
 
     return $null
+}
+
+function Test-LoopbackHost {
+    <#
+        Whether a host name means "this machine", by the same rule the agent
+        uses - 127.0.0.0/8 in full, not just 127.0.0.1, because calling
+        127.0.0.2 remote would refuse a working local configuration.
+
+        [uri] renders an IPv6 literal with its brackets, so both spellings of
+        ::1 are matched here.
+    #>
+    param([string]$HostName)
+
+    if ($HostName -eq 'localhost' -or $HostName -eq '::1' -or $HostName -eq '[::1]') {
+        return $true
+    }
+
+    if ($HostName -match '^(\d{1,3})\.\d{1,3}\.\d{1,3}\.\d{1,3}$') {
+        return ([int]$matches[1] -eq 127)
+    }
+
+    return $false
 }
 
 function Copy-Tree {
@@ -345,6 +407,50 @@ if (-not (Test-Path -LiteralPath (Join-Path $dashboardDist 'index.html'))) {
 $backendSource = Join-Path $SourceRoot 'backend'
 if (-not (Test-Path -LiteralPath (Join-Path $backendSource 'serve.py'))) {
     $problems += "No backend at $backendSource."
+}
+
+# -BackendUrl and -AgentToken are checked here, with everything else that
+# would stop an install, so a mistyped address is reported before any file is
+# copied. The rules are the agent's own startup rules, applied early: being
+# told now is better than finding a service that will not start.
+$configuresPush = $BackendUrl -or $AgentToken -or $AllowInsecurePush.IsPresent
+
+if ($configuresPush) {
+    if (-not $BackendUrl -or -not $AgentToken) {
+        # Half a configuration is refused rather than half applied. A URL with
+        # no token is 401 on every push; a token with no URL has nowhere to go.
+        $problems += (
+            "Pushing to a backend needs both -BackendUrl and -AgentToken. " +
+            "Together they replace whatever this machine was pushing before; " +
+            "leave both out to keep what is already configured. Issue a token " +
+            "on the backend with: python -m app.auth.create_agent_token --host <name>"
+        )
+    } else {
+        $destination = $null
+        if (-not [uri]::TryCreate($BackendUrl, [UriKind]::Absolute, [ref]$destination) -or
+            ($destination.Scheme -ne 'http' -and $destination.Scheme -ne 'https')) {
+            $problems += (
+                "-BackendUrl is not an http address: $BackendUrl. It is the full " +
+                "ingest endpoint, like http://backend:8000/api/ingest/snapshot"
+            )
+        } elseif ($destination.Scheme -eq 'https') {
+            $problems += (
+                "-BackendUrl is https, which this agent cannot speak yet. Terminate " +
+                "TLS in front of the backend and give the agent the http:// address " +
+                "behind it. See docs/decisions/0002-the-agent-speaks-tls-through-winhttp.md"
+            )
+        } elseif (-not (Test-LoopbackHost $destination.Host) -and -not $AllowInsecurePush.IsPresent) {
+            # The one that matters. A token sent in clear to another machine is
+            # readable by anything on the path, and a stolen agent token writes
+            # any history it likes for the host it names.
+            $problems += (
+                "-BackendUrl points off this machine over plain HTTP, so the agent's " +
+                "token would cross the network in clear on every push. Put TLS in " +
+                "front of the backend, or pass -AllowInsecurePush if the network " +
+                "between these machines is genuinely trusted."
+            )
+        }
+    }
 }
 
 $python = Get-PythonCommand
@@ -491,7 +597,9 @@ Write-Step "Preparing $DataDir"
 New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $DataDir 'logs') -Force | Out-Null
 
-$existingSecret = Get-ExistingSessionSecret -ConfigFile $configFile
+$existingSecret = Get-ExistingSetting -ConfigFile $configFile `
+    -Name 'SYSWATCH_SESSION_SECRET' `
+    -Consequence 'continuing would generate a new secret and sign out every user.'
 
 if ($existingSecret) {
     Write-Detail "Keeping the existing session secret."
@@ -499,6 +607,38 @@ if ($existingSecret) {
 } else {
     Write-Detail "Generating a session secret."
     $secret = New-SessionSecret
+}
+
+# What this machine pushes, and where. Parameters replace it; no parameters
+# keeps whatever the file already says.
+#
+# Carried forward explicitly, because the failure of forgetting is a quiet one:
+# the machine would install cleanly, run, serve loopback, and simply stop
+# reporting. The only symptom is a host going stale on a dashboard somebody
+# else is looking at, with nothing in any log here to explain it.
+$agentLines = @()
+
+if ($configuresPush) {
+    $agentLines += "SYSWATCH_AGENT_BACKEND_URL=$BackendUrl"
+    $agentLines += "SYSWATCH_AGENT_TOKEN=$AgentToken"
+    if ($AllowInsecurePush.IsPresent) {
+        $agentLines += "SYSWATCH_AGENT_ALLOW_INSECURE_PUSH=true"
+    }
+    # The URL, never the token. This console output is what an operator pastes
+    # into a ticket when an install goes wrong.
+    Write-Detail "Pushing snapshots to $BackendUrl"
+} else {
+    foreach ($name in @('SYSWATCH_AGENT_BACKEND_URL',
+                        'SYSWATCH_AGENT_TOKEN',
+                        'SYSWATCH_AGENT_ALLOW_INSECURE_PUSH')) {
+        $kept = Get-ExistingSetting -ConfigFile $configFile -Name $name `
+            -Consequence 'continuing would drop this machine''s push configuration and it would stop reporting.'
+        if ($kept) { $agentLines += "$name=$kept" }
+    }
+
+    if ($agentLines.Count -gt 0) {
+        Write-Detail "Keeping the existing push configuration."
+    }
 }
 
 $dashboardInstalled = Join-Path $InstallRoot 'dashboard'
@@ -516,6 +656,16 @@ $configLines = @(
     "SYSWATCH_PORT=$Port"
     "SYSWATCH_AGENT_BASE_URL=http://127.0.0.1:8080"
 )
+
+if ($agentLines.Count -gt 0) {
+    $configLines += @(
+        ""
+        "# Read by the agent rather than the backend: where this machine pushes"
+        "# its snapshots, and the credential it presents. The token is one of the"
+        "# two reasons this file is readable only by Administrators and SYSTEM."
+    )
+    $configLines += $agentLines
+}
 
 Set-Content -LiteralPath $configFile -Value $configLines -Encoding utf8
 Write-Detail "Wrote $configFile"
@@ -538,7 +688,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "icacls exited $LASTEXITCODE" }
     Write-Detail "Restricted $ConfigFileName to Administrators and SYSTEM."
 } catch {
-    Write-Warn "Could not restrict permissions on $configFile. It contains the session secret; check who can read it."
+    Write-Warn "Could not restrict permissions on $configFile. It contains the session secret and any agent token; check who can read it."
 }
 
 # --- python environment ------------------------------------------------------
@@ -618,6 +768,7 @@ if ($SkipServices.IsPresent) {
     Write-Step "Skipping service registration (-SkipServices)"
     Write-Detail "To finish by hand, from an elevated prompt:"
     Write-Detail "  setx /M SYSWATCH_CONFIG_FILE `"$configFile`""
+    Write-Detail "  setx /M SYSWATCH_AGENT_CONFIG_FILE `"$configFile`""
     Write-Detail "  `"$InstallRoot\agent\agent.exe`" --install"
     Write-Detail "  nssm install $BackendServiceName `"$venvPython`" `"$InstallRoot\backend\serve.py`""
     Write-Detail "  nssm set $BackendServiceName AppDirectory `"$InstallRoot\backend`""
@@ -626,6 +777,17 @@ if ($SkipServices.IsPresent) {
 
     [Environment]::SetEnvironmentVariable('SYSWATCH_CONFIG_FILE', $configFile, 'Machine')
     Write-Detail "Set SYSWATCH_CONFIG_FILE for the machine."
+
+    # The agent reads the same file, and looks for it in %PROGRAMDATA%\SysWatch
+    # unless told otherwise - which is the wrong place whenever -DataDir points
+    # somewhere else. Without this, such an install writes a push configuration
+    # the agent never reads.
+    #
+    # This is the only agent setting that may come from the environment, and
+    # only because it is a path rather than a value: a machine-wide variable on
+    # Windows is readable by every account on it, which is no place for a token.
+    [Environment]::SetEnvironmentVariable('SYSWATCH_AGENT_CONFIG_FILE', $configFile, 'Machine')
+    Write-Detail "Set SYSWATCH_AGENT_CONFIG_FILE for the machine."
 
     $agentBinaryInstalled = Join-Path $InstallRoot 'agent\agent.exe'
     $expectedPath = '"{0}" --service' -f $agentBinaryInstalled
@@ -769,6 +931,11 @@ Write-Host ""
 Write-Host "SysWatch $version is installed." -ForegroundColor Green
 Write-Host ""
 Write-Host "  Dashboard:  http://127.0.0.1:$Port/"
+if ($agentLines.Count -gt 0 -and $BackendUrl) {
+    Write-Host "  Pushing to: $BackendUrl"
+} elseif ($agentLines.Count -gt 0) {
+    Write-Host "  Pushing to: (kept from the existing configuration)"
+}
 Write-Host "  Config:     $configFile"
 Write-Host "  Data:       $DataDir"
 Write-Host "  Logs:       $(Join-Path $DataDir 'logs')"

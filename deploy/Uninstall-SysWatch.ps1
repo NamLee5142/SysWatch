@@ -158,6 +158,9 @@ if (Test-Path -LiteralPath $InstallRoot) {
 [Environment]::SetEnvironmentVariable('SYSWATCH_CONFIG_FILE', $null, 'Machine')
 Write-Detail "Cleared SYSWATCH_CONFIG_FILE."
 
+[Environment]::SetEnvironmentVariable('SYSWATCH_AGENT_CONFIG_FILE', $null, 'Machine')
+Write-Detail "Cleared SYSWATCH_AGENT_CONFIG_FILE."
+
 # --- data --------------------------------------------------------------------
 
 if (-not $RemoveData.IsPresent) {

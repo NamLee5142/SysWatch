@@ -148,14 +148,23 @@ def from_storage_time(value):
 class SnapshotStore:
     """Persistence boundary for snapshots. Keeps SQLAlchemy out of the callers."""
 
-    def save(self, snapshot):
+    def save(self, snapshot, host_name=None):
         """Persist a snapshot.
 
         Returns the stored record, or None when this host already has a snapshot
         at this collection time. Polling faster than the agent collects is
-        therefore harmless rather than a source of duplicate rows.
+        therefore harmless rather than a source of duplicate rows - and a push
+        the agent retries after a timeout is idempotent for the same reason.
+
+        host_name overrides the name inside the payload. The poller leaves it
+        None, because it fetched the snapshot from an agent it was configured to
+        trust. An ingestion request supplies it from the credential: the payload
+        is written by the machine being identified, so believing its systemInfo
+        would let one compromised agent file rows under any host it liked.
         """
         record = self._to_record(snapshot)
+        if host_name is not None:
+            record.host_name = host_name
         try:
             with get_session() as session:
                 session.add(record)

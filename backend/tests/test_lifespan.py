@@ -1,6 +1,8 @@
 import warnings
 
 import pytest
+
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from app.db import session as db_session
@@ -34,22 +36,60 @@ def quiet_poller(monkeypatch):
 
         def get_snapshot(self):
             self.calls += 1
-            return "snapshot"
+            # SnapshotService returns a Snapshot, and the poller now reads
+            # the polled agent's host name off it.
+            return SimpleNamespace(systemInfo=SimpleNamespace(hostName="devbox"))
 
     service = FakeService()
     monkeypatch.setattr("app.main.SnapshotService", lambda *args, **kwargs: service)
     return service
 
 
-def test_create_poller_wires_an_engine_when_alerts_are_enabled(monkeypatch):
+def test_the_alert_engine_exists_only_when_alerts_are_enabled():
     from app.alerts import AlertEngine
+    from app.main import create_alert_engine
+    from config import Settings
+
+    assert isinstance(create_alert_engine(Settings(alerts_enabled=True)), AlertEngine)
+    assert create_alert_engine(Settings(alerts_enabled=False)) is None
+
+
+def test_create_poller_uses_the_engine_it_is_given(monkeypatch):
+    """Construction moved out of create_poller when ingestion needed one too."""
     from app.main import create_poller
     from config import Settings
 
     monkeypatch.setattr("app.main.AgentClient", lambda *a, **k: object())
+    engine = object()
 
-    assert isinstance(create_poller(Settings(alerts_enabled=True))._engine, AlertEngine)
-    assert create_poller(Settings(alerts_enabled=False))._engine is None
+    assert create_poller(Settings(), engine=engine)._engine is engine
+    assert create_poller(Settings())._engine is None
+
+
+def test_the_poller_and_the_ingestion_endpoint_share_one_engine(monkeypatch, quiet_poller):
+    """One engine for the process, not one per path.
+
+    Two would mean two sets of notifiers, so the reminder interval would be
+    tracked separately and an alert could be announced once per path - by the
+    poller for the local agent and again by ingestion for a pushed one.
+    """
+    # quiet_poller switches alerts off for the lifecycle tests. This one is
+    # about the wiring, and building an engine touches no schema.
+    monkeypatch.setenv("SYSWATCH_ALERTS_ENABLED", "true")
+    app = create_app()
+
+    with TestClient(app):
+        assert app.state.alert_engine is not None
+        assert app.state.poller._engine is app.state.alert_engine
+
+
+def test_no_engine_reaches_either_path_when_alerts_are_disabled(monkeypatch, quiet_poller):
+    monkeypatch.setenv("SYSWATCH_ALERTS_ENABLED", "false")
+    app = create_app()
+
+    with TestClient(app):
+        assert app.state.alert_engine is None
+        assert app.state.poller._engine is None
 
 
 def test_engine_is_created_on_startup(monkeypatch, quiet_poller):
