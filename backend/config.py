@@ -17,6 +17,10 @@ CONFIG_FILE_NAME = "syswatch.env"
 DATABASE_FILE_NAME = "syswatch.db"
 LOG_DIR_NAME = "logs"
 
+# Settings whose value is a credential. Redacted from this object's repr; see
+# Settings.__repr_args__ for why that is not merely tidiness.
+SECRET_FIELDS = frozenset({"session_secret", "smtp_password", "webhook_url"})
+
 
 def default_data_dir(dev_mode: bool = False) -> str:
     r"""Where the database and logs live when nothing says otherwise.
@@ -136,6 +140,41 @@ class Settings(BaseSettings):
         # A stale key left in the file should not stop the process starting.
         extra="ignore",
     )
+
+    def __repr_args__(self):
+        """Redact the credentials, so that printing this object cannot leak one.
+
+        The fields below used to be documented as "never logged, never repr'd"
+        and were neither - they are plain strings, and pydantic's default repr
+        prints every field. What actually kept them out of the log was that no
+        line of code had yet printed a Settings, which is a property of the
+        code today rather than of this class.
+
+        That gap is worth closing rather than restating, because the two files
+        are not protected alike. The installer runs icacls on syswatch.env and
+        restricts it to Administrators and SYSTEM; the logs directory beside it
+        inherits ProgramData's permissions and is readable by every account on
+        the machine, as are the service's stdout and stderr files. So a single
+        debug line, or a traceback rendering this object, would move a secret
+        from the locked file into a world-readable one.
+
+        session_secret is the one that matters most: it is the HMAC key for
+        every session token *and* every agent token, so leaking it is not one
+        credential but all of them.
+
+        pydantic builds repr(), str() and any nested repr from this method, so
+        overriding it covers all three. model_dump() is deliberately left
+        alone - it is explicit serialization, and a caller asking for the
+        values by name should get them.
+        """
+        for name, value in super().__repr_args__():
+            # An unset secret is shown as it is. Redacting "" to *** would
+            # claim a credential is configured when none is, which is exactly
+            # the wrong thing to read in a debugging session.
+            if name in SECRET_FIELDS and value:
+                yield name, "***"
+            else:
+                yield name, value
 
     @model_validator(mode="after")
     def _derive_paths(self):
