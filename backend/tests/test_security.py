@@ -143,7 +143,19 @@ def test_dev_mode_allows_a_missing_secret_but_says_so():
 
 
 def test_disabling_auth_is_fatal_outside_development():
-    with pytest.raises(InsecureConfiguration, match="opens every endpoint"):
+    with pytest.raises(InsecureConfiguration, match="opens every session-protected"):
+        verify_security_configuration(settings(auth_enabled=False, session_secret=""))
+
+
+def test_the_refusal_does_not_overstate_what_the_switch_opens():
+    """It does not open the ingestion endpoint, and saying so sends people wrong.
+
+    `require_agent` ignores this switch deliberately, so a pushed snapshot is
+    still authenticated with `SYSWATCH_AUTH_ENABLED=false`. The message used to
+    say "every endpoint", which is the claim somebody reads right before
+    wondering why their agent gets a 401 on a development box.
+    """
+    with pytest.raises(InsecureConfiguration, match="ingestion"):
         verify_security_configuration(settings(auth_enabled=False, session_secret=""))
 
 

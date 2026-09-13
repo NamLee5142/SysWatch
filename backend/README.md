@@ -148,7 +148,7 @@ the file edited.
 | `SYSWATCH_SMTP_FROM` | *(none)* | Envelope sender. Required once `SMTP_HOST` is set |
 | `SYSWATCH_SMTP_TO` | *(none)* | Comma-separated recipients, like `CORS_ORIGINS`. Required once `SMTP_HOST` is set |
 | `SYSWATCH_WEBHOOK_URL` | *(none)* | Unset disables webhooks entirely. Usually a credential — treat it as one |
-| `SYSWATCH_AUTH_ENABLED` | `true` | Master switch for authentication. `false` opens every endpoint |
+| `SYSWATCH_AUTH_ENABLED` | `true` | Master switch for session authentication. `false` opens every endpoint a session protects; `POST /ingest/snapshot` still requires its token |
 | `SYSWATCH_SESSION_SECRET` | *(none)* | HMAC key for session tokens. **Required**; startup fails without it |
 | `SYSWATCH_SESSION_TTL_SECONDS` | `28800` | Session lifetime from login, absolute |
 | `SYSWATCH_DEV_MODE` | `false` | Drops the cookie's `Secure` flag and permits a missing secret |

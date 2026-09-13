@@ -585,7 +585,7 @@ defend. Each message names the fix.
 | --- | --- | --- |
 | `SYSWATCH_SESSION_SECRET must be set when authentication is enabled` | No config file was found, or the key is still commented out | Set `SYSWATCH_CONFIG_FILE`, or uncomment the key in `syswatch.env` |
 | `SYSWATCH_SESSION_SECRET must be at least 32 characters` | The key is too short to be a key | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
-| `SYSWATCH_AUTH_ENABLED is false, which opens every endpoint and treats every caller as an administrator` | Authentication switched off on a real install | Remove the setting, or set `SYSWATCH_DEV_MODE=true` if this really is a development box |
+| `SYSWATCH_AUTH_ENABLED is false, which opens every session-protected endpoint and treats every caller as an administrator` | Authentication switched off on a real install | Remove the setting, or set `SYSWATCH_DEV_MODE=true` if this really is a development box |
 | `SYSWATCH_CORS_ORIGINS contains '...'. The session cookie is Secure, so a browser on an http:// origin will never send it` | A plain-HTTP origin outside dev mode | Use `https://`, or serve the dashboard from the backend and drop the setting entirely |
 | `Mail is half configured: ... set, ... missing` | Some of `SMTP_HOST` / `SMTP_FROM` / `SMTP_TO` but not all | Set the rest, or unset all three |
 | `SYSWATCH_SMTP_USERNAME and SYSWATCH_SMTP_PASSWORD must be set together, or neither` | One without the other | Set both to authenticate, or neither for an open relay |
