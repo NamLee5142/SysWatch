@@ -2,7 +2,9 @@
 A cross-platform system monitoring platform consisting of a native C++ agent and a Python backend for collecting, storing, and visualizing system metrics.
 
 # Project overview
-SysWatch is a client-server monitoring system. It collects hardware and operating system metrics from multiple machines through a lightweight C++ agent and sends them securely to a centralized Python server. The server stores historical data, provides REST APIs, and offers a web dashboard for monitoring, alerts, and remote management.
+SysWatch is a client-server monitoring system. It collects hardware and operating system metrics from multiple machines through a lightweight C++ agent, which pushes them to a centralized Python server authenticated by a per-host token. The server stores historical data, provides REST APIs, and offers a web dashboard for monitoring and alerts.
+
+**The push is authenticated but not yet encrypted.** The agent speaks no TLS, so a second machine reporting over a network sends its token and its telemetry in clear, behind a setting that has to be turned on deliberately. That is the next thing being fixed - see [decisions/0002](docs/decisions/0002-the-agent-speaks-tls-through-winhttp.md) and [sprint 13](docs/sprint-13.md). The objectives below are goals; the phase checklists further down are the honest status.
 
 # Objectives
 
@@ -27,7 +29,8 @@ SysWatch is a client-server monitoring system. It collects hardware and operatin
                                |
                      Native C++ Monitoring Agent
                                |
-                      HTTPS / gRPC / TCP
+                     HTTP + bearer token today
+                        (HTTPS: sprint 13)
                                |
                                v
                +-------------------------------+
