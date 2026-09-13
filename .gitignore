@@ -247,6 +247,15 @@ agent/*.pdb
 backend/data/
 agent/logs/
 
+# Rotated logs, wherever they land. `*.log` above does not match
+# `syswatch.log.3`, and RotatingFileHandler produces exactly that - so the
+# directory rules above cover rotations only for the two directories they name.
+# They are not the only places logs appear: SYSWATCH_DATA_DIR defaults to the
+# relative string "data" under dev mode and off Windows, so a run started from
+# the repository root writes ./data/logs, and the agent falls back to a
+# relative ./logs when PROGRAMDATA is unset.
+*.log.[0-9]*
+
 # Any SQLite database, wherever it lands — not just the one named syswatch.db.
 # `app.db.backup` takes an arbitrary destination path, so a backup written from
 # the repository root is a plausible accident, and the file it produces carries
@@ -276,6 +285,11 @@ secrets.json
 secrets.yml
 secrets.yaml
 deploy/*.local.*
+
+# Editor state. The contents are innocuous - a CMake source directory - but
+# they are absolute paths from whichever machine wrote them, so they are wrong
+# for everyone else and would otherwise sit in `git status` forever.
+.vscode/
 
 # Dashboard (Node / Vite). node_modules is thousands of files restored from
 # package-lock.json, so it never belongs in the repository. The build output

@@ -36,6 +36,13 @@ RUNTIME_ARTIFACTS = [
     "backend/data/logs/syswatch.log.3",
     "agent/logs/agent.log",
     "agent/logs/agent.log.1",
+    # Rotated logs outside the two directories the rules name. SYSWATCH_DATA_DIR
+    # is the relative string "data" under dev mode and off Windows, so a run
+    # started from the repository root writes here instead; the agent falls back
+    # to a relative ./logs with no PROGRAMDATA. `*.log` does not match a
+    # rotation suffix, so these need their own rule and their own check.
+    "data/logs/syswatch.log.3",
+    "logs/agent.log.1",
     "backend/syswatch.env",
     "backend/.env",
     "backend/.env.production",
