@@ -31,6 +31,86 @@ payload, and it is exactly what request signing would have left readable.
 
 ---
 
+## Carried over from sprint 12
+
+**Verify pushing between two real machines, before commit 2.**
+
+Sprint 12's definition of done ended with "verified between two real machines,
+not two processes on one", and closed without it. Every link in the chain is
+tested - CI installs a pushing agent and asserts a snapshot arrives under the
+token's host - but always on one machine, so the network between two has never
+been in the path: DNS, a firewall, a backend that is not on loopback, latency
+that is not microseconds.
+
+**Why before commit 2 specifically.** Commit 2 moves the push to `https://`.
+If the first two-machine run happens after that, a failure has two candidate
+causes - the network or the TLS - and nothing to tell them apart. Run on plain
+HTTP first, and TLS becomes the only new variable when it arrives.
+
+This is a test, not a commit. Whatever it finds is the commit - the way sprint
+12's commit 12 was named for what pushing to a real backend turned up.
+
+### Procedure
+
+On a trusted network only: steps 1 and 2 put the backend and its session
+cookies on that network in clear, and step 6 undoes it.
+
+1. **Make the backend reachable** from the second machine. In its
+   `syswatch.env`, set `SYSWATCH_HOST=0.0.0.0` and restart `SysWatchBackend`.
+2. **Open the port to the second machine only**, from an elevated prompt on
+   the backend machine:
+
+   ```text
+   New-NetFirewallRule -DisplayName "SysWatch test" -Direction Inbound `
+       -Protocol TCP -LocalPort 8000 -RemoteAddress <second-machine-ip> -Action Allow
+   ```
+
+   A rule scoped to one address, because the point is to test pushing, not to
+   put the backend on the whole network.
+3. **Issue a token** on the backend machine, deliberately naming a host that is
+   *not* the second machine's Windows hostname:
+
+   ```text
+   python -m app.auth.create_agent_token --host twin-test
+   ```
+
+4. **Install on the second machine** with it, following
+   [deployment.md](deployment.md#monitoring-a-second-machine):
+
+   ```text
+   powershell -ExecutionPolicy Bypass -File deploy\Install-SysWatch.ps1 `
+       -BackendUrl http://<backend-ip>:8000/api/ingest/snapshot `
+       -AgentToken <token> -AllowInsecurePush -SkipAdminAccount
+   ```
+
+5. **Run the checks below.**
+6. **Undo steps 1 and 2** - remove `SYSWATCH_HOST` and delete the firewall rule
+   (`Remove-NetFirewallRule -DisplayName "SysWatch test"`) - unless the machine
+   is staying on that network behind something that gives it TLS.
+
+### What counts as passing
+
+Each of these has been checked on one machine. None has been checked across a
+network.
+
+| | Check | What it proves on a real network |
+| --- | --- | --- |
+| 1 | `twin-test` appears in the backend machine's host selector | The whole chain, end to end |
+| 2 | `create_agent_token --list` shows a last-seen time, not `never` | The token authenticated across the network |
+| 3 | Snapshots are filed under `twin-test`, the second machine's real hostname is not in the host selector, and the backend's `syswatch.log` says once that `'twin-test'` reported a different hostname | Identity comes from the credential, not the payload - and the mismatch is noticed, once, rather than every push |
+| 4 | Stop `SysWatchBackend` for two minutes, start it again: the gap fills in | The buffer holds and drains after a real outage |
+| 5 | Shut the second machine down: its page shows the stale banner within four minutes | Staleness is reported for a host that pushes. Three minutes is the threshold; the banner re-checks once a minute, so up to four |
+| 6 | Re-run the installer on the second machine with no push parameters: it keeps reporting | Upgrade preserves the push configuration |
+
+If a check fails, the second machine's
+`C:\ProgramData\SysWatch\logs\agent.log` names the reason - the table in
+[deployment.md](deployment.md#3-check-it-arrived) maps each line to a cause.
+
+*Done when:* all six pass, and sprint 12's definition of done is updated to say
+so - or a check fails, and the fix is the commit that closes it.
+
+---
+
 ## Phase A — TLS (commits 1–5)
 
 **1. `feat: an http client built on winhttp`**

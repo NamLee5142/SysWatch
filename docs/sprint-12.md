@@ -413,12 +413,19 @@ Against the definition of done above.
 | 7 | Every suite green on all four CI jobs | Met at each commit |
 | 8 | The install workflow covers a pushing install | Met. `install.yml` issues a token, reinstalls with it, and asserts a snapshot arrived under the token's host |
 | 9 | `deployment.md` describes adding a second machine | Met |
-| 10 | Verified between two real machines | **Not met.** Verified between two processes and against a real backend, which is not the same thing |
+| 10 | Verified between two real machines | **Deferred** to [sprint 13](sprint-13.md#carried-over-from-sprint-12). Verified between two processes and against a real backend, which is not the same thing |
 
-**10 is the sprint's honest gap.** Nothing has yet installed a pushing agent on
-a machine that is not this one. Every other line above is built and tested;
-what is missing is evidence that it works where it is meant to, and no amount
-of CI on one runner supplies that.
+**10 is the sprint's honest gap, and it is deferred rather than dropped.**
+Nothing has yet installed a pushing agent on a machine that is not this one.
+Every other line above is built and tested; what is missing is evidence that it
+works where it is meant to, and no amount of CI on one runner supplies that.
+
+It needs a second machine, which was not to hand when the sprint closed. So it
+is written into [sprint 13](sprint-13.md#carried-over-from-sprint-12) as that
+sprint's first item, with the procedure and what counts as passing - a
+definition-of-done line moved into a plan survives in a way that one marked
+"later" does not. v0.12.0 ships with it open, and its release notes should say
+so rather than leave it to be inferred.
 
 8 was closed after the fact, by giving `install.yml` the other kind of install:
 a token from the shipped command, an install configured with it, and an
