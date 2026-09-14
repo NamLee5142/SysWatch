@@ -283,6 +283,7 @@ One tag per release, each on the merge that ended its sprint.
 | `v0.9.0` | `6a28b03` | security and authentication |
 | `v0.10.0` | `8c0309a` | production hardening |
 | `v0.11.0` | `ba4b4c4` | alert delivery |
+| `v0.12.0` | `e7ba101` | multi-machine monitoring |
 
 Sprints 5 to 9 were first tagged `v.0.5.0`, with a stray dot, and re-tagged
 without it. `origin` and the GitHub releases have been correct since; a clone
