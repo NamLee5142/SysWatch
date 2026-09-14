@@ -110,3 +110,39 @@ def test_the_install_workflow_covers_both_kinds_of_install():
         "change to how tokens are issued breaks this rather than passing on a "
         "fixture the product does not use"
     )
+
+
+def test_a_release_is_titled_with_its_tag_alone():
+    """"v0.12.0", not "SysWatch 0.12.0".
+
+    Every release from v0.10.0 on is named with the bare tag. The workflow used
+    to title them "SysWatch <version>", so each one had to be renamed by hand
+    after it published - a step that is easy to forget and invisible in review.
+    """
+    release = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+
+    titles = re.findall(r"--title\s+(\S+)", release)
+
+    assert titles == ['"${GITHUB_REF_NAME}"'], f"release title is {titles}"
+
+
+def test_the_release_notes_do_not_outlive_the_installer_they_describe():
+    """The notes are written into every release, so they must stay true.
+
+    They tell an operator to pass -AllowInsecurePush to reach a second machine.
+    Sprint 13 removes that parameter once the agent speaks TLS, and a release
+    whose notes name a flag the installer refuses would send somebody hunting a
+    typo. This fails on the commit that removes it, which is when the paragraph
+    needs rewriting.
+    """
+    release = (WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+    installer = (WORKFLOWS.parents[1] / "deploy" / "Install-SysWatch.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    for parameter in ("-BackendUrl", "-AgentToken", "-AllowInsecurePush"):
+        if parameter in release:
+            assert f"${parameter[1:]}" in installer, (
+                f"release.yml tells operators to use {parameter}, "
+                "which Install-SysWatch.ps1 no longer accepts"
+            )

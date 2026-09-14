@@ -130,8 +130,17 @@ jobs:
         run: |
           set -euo pipefail
           version=$(tr -d '[:space:]' < VERSION)
+          # Titled with the tag and nothing else - "v0.12.0", the way every
+          # release from v0.10.0 on is named. This used to say "SysWatch
+          # $version", which meant renaming each release by hand after it
+          # published. The check step above guarantees the tag is v$VERSION.
+          #
+          # The notes below are written into every release, so they must stay
+          # true for every release. The paragraph on a second machine is true
+          # until sprint 13 removes -AllowInsecurePush; test_workflows.py fails
+          # when the installer loses that parameter and this still mentions it.
           gh release create "${GITHUB_REF_NAME}" "dist/SysWatch-$version.zip" \
-            --title "SysWatch $version" \
+            --title "${GITHUB_REF_NAME}" \
             --generate-notes \
             --notes-file - <<NOTES
           ## Install
@@ -153,4 +162,12 @@ jobs:
           or SYSWATCH_WEBHOOK_URL in syswatch.env - see "Alert delivery" in
           docs/deployment.md for what each one needs and what is refused at
           startup.
+
+          To monitor a second machine, issue it a token on the backend with
+          python -m app.auth.create_agent_token --host NAME, then install on
+          that machine with -BackendUrl and -AgentToken. The push is
+          authenticated but not yet encrypted: the agent speaks no TLS, so
+          reporting to another machine also needs -AllowInsecurePush, and a
+          network you would be willing to send a credential across. See
+          "Monitoring a second machine" in docs/deployment.md.
           NOTES
