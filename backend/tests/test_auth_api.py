@@ -298,7 +298,14 @@ def test_the_window_expires():
     limiter.record_failure("k")
     assert limiter.retry_after("k") is not None
 
-    time.sleep(0.06)
+    # Well past the window, not just past it. The limiter reads time.monotonic,
+    # which on Windows before Python 3.13 is GetTickCount64 and moves in 15.6 ms
+    # steps. Sleeping 60 ms against a 50 ms window left a margin smaller than
+    # one tick, so the clock could report the window unexpired: 4% of runs on
+    # Python 3.10, 0% on 3.14 - which is how it failed CI on the merge of
+    # sprint 12 after passing on the identical commit in its pull request. The
+    # limiter itself is unaffected; its real window is 300 seconds.
+    time.sleep(0.15)
     assert limiter.retry_after("k") is None
 
 
