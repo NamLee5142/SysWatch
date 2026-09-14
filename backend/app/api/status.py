@@ -24,6 +24,7 @@ async def get_status(request: Request):
 
     return Status(
         agent=_agent_state(poller),
+        agentHost=poller.agent_host,
         pollerRunning=poller.running,
         lastPollAt=poller.last_polled_at,
         lastSuccessAt=poller.last_success_at,

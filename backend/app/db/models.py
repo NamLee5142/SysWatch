@@ -156,6 +156,18 @@ class AlertRecord(Base):
     value: Mapped[float] = mapped_column(Float, nullable=False)
 
     # All naive UTC, stamped from the snapshot's collectedAt by the engine.
+    # When the metric first stopped breaching, or null while it is breaching.
+    #
+    # An alert does not resolve the moment the value crosses back: a rule at
+    # 90% against a metric hovering at 90.2 and 89.9 opened and resolved five
+    # times in three minutes on a real run, which with mail configured is ten
+    # messages about one condition. The value has to stay clear for
+    # SYSWATCH_ALERT_RESOLVE_AFTER_SECONDS before the alert is closed, and any
+    # breach in between sets this back to null.
+    clearing_since: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -275,4 +287,62 @@ class SessionRecord(Base):
         return (
             f"SessionRecord(id={self.id!r}, user_id={self.user_id!r}, "
             f"expires_at={self.expires_at!r})"
+        )
+
+
+class AgentTokenRecord(Base):
+    """One agent's credential, and the host it speaks for.
+
+    The raw token is never stored. It exists in the agent's configuration file
+    and nowhere else; this row holds only an HMAC of it, so a reader of the
+    database cannot mint a credential that impersonates a machine.
+
+    host_name is deliberately **not** unique. Rotating a credential means
+    issuing the new one, deploying it, and only then disabling the old - an
+    overlap a unique constraint would forbid, leaving "delete the row and hope
+    the deploy lands before the next push" as the only route.
+
+    This column is the host identity. The hostName inside a pushed payload is
+    self-reported and is recorded as reported, but a snapshot is filed under the
+    host its token names - otherwise one compromised agent could overwrite any
+    other machine's history.
+    """
+
+    __tablename__ = "agent_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    host_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # HMAC-SHA256(SESSION_SECRET, domain || raw_token), hex. Unique because it
+    # is the lookup key for every ingestion request. See app/auth/agent_token.py
+    # for why this is not Argon2.
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+
+    # A label for whoever has to work out what a row is for a year from now:
+    # "the laptop in the server room", not a second identity.
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # Null until the agent's first push. Distinguishes "issued and never used"
+    # from "used and then stopped", which are different problems.
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Revocation without deletion: a disabled row still says a token existed,
+    # which is what an audit of a decommissioned machine needs.
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        # Listing and revoking every token a host holds.
+        Index("ix_agent_tokens_host_name", "host_name"),
+    )
+
+    def __repr__(self):
+        # No token_hash: it is not the token, but it is still the lookup key.
+        return (
+            f"AgentTokenRecord(id={self.id!r}, host_name={self.host_name!r}, "
+            f"enabled={self.enabled!r})"
         )

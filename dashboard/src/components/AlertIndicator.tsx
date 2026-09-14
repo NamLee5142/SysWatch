@@ -16,7 +16,13 @@ export function AlertIndicator() {
   // Treat a failed or not-yet-loaded poll as zero rather than flashing an error
   // in the chrome; the Alerts page itself surfaces the failure.
   const count = active.data?.items.length ?? 0
-  const label = count === 0 ? 'No active alerts' : `${count} active alert${count === 1 ? '' : 's'}`
+  // "across all hosts" because the header next to it names one machine, and a
+  // bare count beside a host name reads as that host's count. It is not: this
+  // is every host, which is the point of it.
+  const label =
+    count === 0
+      ? 'No active alerts'
+      : `${count} active alert${count === 1 ? '' : 's'} across all hosts`
 
   return (
     <Link

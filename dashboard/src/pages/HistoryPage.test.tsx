@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, listSnapshots } from '../api/client'
+import { renderWithHost } from '../test/renderWithHost'
 import type { Snapshot, SnapshotPage } from '../api/types'
 import { HistoryPage } from './HistoryPage'
 
@@ -40,7 +41,7 @@ describe('HistoryPage', () => {
   it('shows a loading skeleton table before the first page arrives', () => {
     vi.mocked(listSnapshots).mockReturnValue(neverSettles())
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     // The real column headers stay visible while the rows are still loading.
     const headers = screen.getAllByRole('columnheader')
@@ -55,23 +56,25 @@ describe('HistoryPage', () => {
     expect(within(skeletonRow).getAllByRole('cell')).toHaveLength(5)
   })
 
-  it('fetches page 0 with no filters on mount', async () => {
+  it('fetches page 0 for the selected host on mount', async () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)]))
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
     const [params] = vi.mocked(listSnapshots).mock.calls[0]
-    expect(params).toMatchObject({ host: undefined, since: undefined, until: undefined, limit: 25, offset: 0 })
+    expect(params).toMatchObject({ host: 'devbox', since: undefined, until: undefined, limit: 25, offset: 0 })
   })
 
-  it('renders a row per snapshot with host, CPU, memory and disk', async () => {
+  it('renders a row per snapshot with CPU, memory and disk', async () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0, 'devbox')]))
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
-    expect(screen.getByRole('cell', { name: 'devbox' })).toBeInTheDocument()
+    // No Host column: every row is the selected host, so it repeated the
+    // header on every line.
+    expect(screen.queryByRole('columnheader', { name: 'Host' })).not.toBeInTheDocument()
     expect(screen.getByRole('cell', { name: '42.5%' })).toBeInTheDocument()
     expect(screen.getByRole('cell', { name: '4.0 GB / 16.0 GB' })).toBeInTheDocument()
     // 512 - 112 = 400 GB used.
@@ -81,34 +84,49 @@ describe('HistoryPage', () => {
   it('shows a specific empty message rather than a blank table', async () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([]))
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     await waitFor(() => expect(screen.getByText('No snapshots match these filters.')).toBeInTheDocument())
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
-  it('submits the host filter only when Search is clicked, not on every keystroke', async () => {
+  it('has no host field of its own', async () => {
+    // It had a free-text "Any host" box before the header had a selector.
+    // Two controls for one idea is how they come to disagree, and the
+    // interesting question then is which of them wins.
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)]))
-    const user = userEvent.setup()
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
+
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
+    expect(screen.queryByLabelText('Host')).not.toBeInTheDocument()
+  })
 
-    await user.type(screen.getByLabelText('Host'), 'buildbox')
-    expect(listSnapshots).toHaveBeenCalledTimes(1)
+  it('queries whichever host is selected', async () => {
+    vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)]))
 
-    await user.click(screen.getByRole('button', { name: 'Search' }))
+    renderWithHost(<HistoryPage />, { hostName: 'buildbox' })
 
-    await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(2))
-    const [params] = vi.mocked(listSnapshots).mock.calls[1]
-    expect(params).toMatchObject({ host: 'buildbox' })
+    await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(listSnapshots).mock.calls[0][0]).toMatchObject({ host: 'buildbox' })
+  })
+
+  it('asks for nothing in particular when no host has reported', async () => {
+    // A fresh install. Sending host=null would be a filter matching nothing;
+    // omitting it returns whatever exists, which is nothing.
+    vi.mocked(listSnapshots).mockResolvedValue(pageOf([]))
+
+    renderWithHost(<HistoryPage />, { hosts: [], hostName: null })
+
+    await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(listSnapshots).mock.calls[0][0]).toMatchObject({ host: undefined })
   })
 
   it('converts the Since and Until filters to ISO strings before requesting', async () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)]))
     const user = userEvent.setup()
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
 
     // <input type="datetime-local"> gives local wall-clock time with no
@@ -130,42 +148,50 @@ describe('HistoryPage', () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf(Array.from({ length: 25 }, (_, i) => snapshotAt(i)), 100))
     const user = userEvent.setup()
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
 
     await user.click(screen.getByRole('button', { name: 'Next' }))
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(2))
     expect(vi.mocked(listSnapshots).mock.calls[1][0]).toMatchObject({ offset: 25 })
 
-    await user.type(screen.getByLabelText('Host'), 'buildbox')
+    await user.type(screen.getByLabelText('Since'), '2026-09-08T09:00')
     await user.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(3))
-    expect(vi.mocked(listSnapshots).mock.calls[2][0]).toMatchObject({ host: 'buildbox', offset: 0 })
+    // Page 5 of the old query has no guaranteed meaning against the new one.
+    expect(vi.mocked(listSnapshots).mock.calls[2][0]).toMatchObject({ offset: 0 })
+    expect(vi.mocked(listSnapshots).mock.calls[2][0]?.since).toBeDefined()
   })
 
   it('clears filters and refetches page 0 unfiltered', async () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)]))
     const user = userEvent.setup()
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
 
-    await user.type(screen.getByLabelText('Host'), 'buildbox')
+    await user.type(screen.getByLabelText('Since'), '2026-09-08T09:00')
     await user.click(screen.getByRole('button', { name: 'Search' }))
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(2))
 
     await user.click(screen.getByRole('button', { name: 'Clear' }))
 
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(3))
-    expect(vi.mocked(listSnapshots).mock.calls[2][0]).toMatchObject({ host: undefined, offset: 0 })
-    expect(screen.getByLabelText('Host')).toHaveValue('')
+    // The host is not cleared with them: it is the header's, not this form's.
+    expect(vi.mocked(listSnapshots).mock.calls[2][0]).toMatchObject({
+      since: undefined,
+      until: undefined,
+      offset: 0,
+      host: 'devbox',
+    })
+    expect(screen.getByLabelText('Since')).toHaveValue('')
   })
 
   it('disables Previous on the first page and Next when there is no more data', async () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)], 1))
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled())
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
@@ -174,7 +200,7 @@ describe('HistoryPage', () => {
   it('enables Next when more rows exist beyond the current page', async () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)], 100))
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled())
   })
@@ -185,7 +211,7 @@ describe('HistoryPage', () => {
     // has no further rows, and clicking it would return an empty page.
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)], 25))
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled())
   })
@@ -194,7 +220,7 @@ describe('HistoryPage', () => {
     vi.mocked(listSnapshots).mockResolvedValue(pageOf([snapshotAt(0)], 100))
     const user = userEvent.setup()
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
     await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(1))
 
     await user.click(screen.getByRole('button', { name: 'Next' }))
@@ -206,7 +232,7 @@ describe('HistoryPage', () => {
   it('shows the reversed-window 422 message inline rather than a generic error', async () => {
     vi.mocked(listSnapshots).mockRejectedValue(new ApiError(422, 'since must not be after until'))
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     await waitFor(() => expect(screen.getByText('since must not be after until')).toBeInTheDocument())
     // The loading skeleton is for "hasn't tried yet", not "tried and failed"
@@ -217,7 +243,7 @@ describe('HistoryPage', () => {
   it('shows a generic message for a non-422 failure', async () => {
     vi.mocked(listSnapshots).mockRejectedValue(new ApiError(503, 'ignored detail'))
 
-    render(<HistoryPage />)
+    renderWithHost(<HistoryPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load history.')).toBeInTheDocument())
     expect(screen.queryByText('ignored detail')).not.toBeInTheDocument()
@@ -227,14 +253,15 @@ describe('HistoryPage', () => {
     vi.mocked(listSnapshots).mockResolvedValueOnce(pageOf([snapshotAt(0, 'devbox')]))
     const user = userEvent.setup()
 
-    render(<HistoryPage />)
-    await waitFor(() => expect(screen.getByRole('cell', { name: 'devbox' })).toBeInTheDocument())
+    renderWithHost(<HistoryPage />)
+    await waitFor(() => expect(screen.getByRole('cell', { name: '42.5%' })).toBeInTheDocument())
 
     vi.mocked(listSnapshots).mockRejectedValueOnce(new ApiError(422, 'since must not be after until'))
     await user.type(screen.getByLabelText('Since'), '2026-08-25T12:00')
     await user.click(screen.getByRole('button', { name: 'Search' }))
 
     await waitFor(() => expect(screen.getByText('since must not be after until')).toBeInTheDocument())
-    expect(screen.getByRole('cell', { name: 'devbox' })).toBeInTheDocument()
+    // The rows are still there under the error, not cleared by it.
+    expect(screen.getByRole('cell', { name: '42.5%' })).toBeInTheDocument()
   })
 })

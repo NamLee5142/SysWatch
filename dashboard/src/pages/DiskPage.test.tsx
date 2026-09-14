@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { renderWithHost } from '../test/renderWithHost'
 import { getLatestSnapshot, getSnapshotSeries, NetworkError } from '../api/client'
 import type { Series, Snapshot } from '../api/types'
 import { DiskPage } from './DiskPage'
@@ -62,7 +63,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     // Two independent sections, each announcing its own loading state.
     expect(screen.getByText('Loading Disk')).toBeInTheDocument()
@@ -73,7 +74,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new Error('boom'))
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
   })
@@ -82,7 +83,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() =>
       expect(screen.getByText("Can't reach the backend. Check that it's running.")).toBeInTheDocument(),
@@ -93,7 +94,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     // (512 - 112) / 512 = 78.125%, rounded to 78%.
     await waitFor(() => expect(screen.getByText('78%')).toBeInTheDocument())
@@ -103,7 +104,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     // The agent sends total and free, not used — the page has to subtract.
     await waitFor(() => expect(screen.getByText('400 GB used / 112 GB free')).toBeInTheDocument())
@@ -113,7 +114,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
     const [params] = vi.mocked(getSnapshotSeries).mock.calls[0]
@@ -130,7 +131,7 @@ describe('DiskPage', () => {
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
     const user = userEvent.setup()
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
 
     await user.click(screen.getByRole('radio', { name: '1h' }))
@@ -144,7 +145,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
     await act(async () => {
@@ -157,7 +158,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument())
   })
@@ -166,7 +167,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue({ ...SERIES, points: [] })
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
   })
@@ -175,7 +176,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(screen.getByText('78%')).toBeInTheDocument())
     expect(screen.getByText('Loading Disk usage over time')).toBeInTheDocument()
@@ -186,7 +187,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockRejectedValue(new Error('boom'))
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
     expect(screen.queryByText('Loading Disk usage over time')).not.toBeInTheDocument()
@@ -196,7 +197,7 @@ describe('DiskPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument())
     expect(screen.getByText('Loading Disk')).toBeInTheDocument()
@@ -209,7 +210,7 @@ describe('DiskPage', () => {
     })
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<DiskPage />)
+    renderWithHost(<DiskPage />)
 
     await waitFor(() => expect(screen.getByText('0%')).toBeInTheDocument())
   })

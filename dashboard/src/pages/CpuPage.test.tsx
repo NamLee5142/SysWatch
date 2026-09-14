@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { renderWithHost } from '../test/renderWithHost'
 import { getLatestSnapshot, getSnapshotSeries, NetworkError } from '../api/client'
 import type { Series, Snapshot } from '../api/types'
 import { CpuPage } from './CpuPage'
@@ -62,7 +63,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     // Two independent sections, each announcing its own loading state — the
     // summary (gauge) and the chart do not share one gate.
@@ -74,7 +75,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new Error('boom'))
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
   })
@@ -83,7 +84,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     // Distinct from the previous test's generic-Error case: proves the
     // summary section renders SnapshotErrorMessage's real output rather than
@@ -97,7 +98,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(screen.getByText('43%')).toBeInTheDocument())
     expect(screen.getByText('8 cores')).toBeInTheDocument()
@@ -107,7 +108,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
     const [params] = vi.mocked(getSnapshotSeries).mock.calls[0]
@@ -128,7 +129,7 @@ describe('CpuPage', () => {
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
     const user = userEvent.setup()
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
 
     await user.click(screen.getByRole('radio', { name: '1h' }))
@@ -142,7 +143,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
     // Give any accidental second fetch a chance to have fired before asserting.
@@ -156,7 +157,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument())
   })
@@ -165,7 +166,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue({ ...SERIES, points: [] })
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
   })
@@ -180,7 +181,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(screen.getByText('43%')).toBeInTheDocument())
     expect(screen.getByText('Loading CPU usage over time')).toBeInTheDocument()
@@ -194,7 +195,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockRejectedValue(new Error('boom'))
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
     expect(screen.queryByText('Loading CPU usage over time')).not.toBeInTheDocument()
@@ -207,7 +208,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     await waitFor(() => expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument())
     expect(screen.getByText('Loading CPU')).toBeInTheDocument()
@@ -217,7 +218,7 @@ describe('CpuPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<CpuPage />)
+    renderWithHost(<CpuPage />)
 
     // The page's own <h1>CPU</h1> already says so once.
     await waitFor(() => expect(screen.getByText('43%')).toBeInTheDocument())

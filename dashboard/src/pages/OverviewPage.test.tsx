@@ -1,6 +1,7 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { renderWithHost } from '../test/renderWithHost'
 import { getLatestSnapshot, getStatus, NetworkError } from '../api/client'
 import type { Snapshot, Status } from '../api/types'
 import { OverviewPage } from './OverviewPage'
@@ -25,6 +26,7 @@ const SNAPSHOT: Snapshot = {
 const STATUS_UP: Status = {
   backend: 'ok',
   agent: 'up',
+  agentHost: 'devbox',
   pollerRunning: true,
   lastPollAt: new Date().toISOString(),
   lastSuccessAt: new Date().toISOString(),
@@ -45,7 +47,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getStatus).mockReturnValue(neverSettles())
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     expect(screen.getByText('Loading Overview')).toBeInTheDocument()
   })
@@ -54,7 +56,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new Error('boom'))
     vi.mocked(getStatus).mockReturnValue(neverSettles())
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
   })
@@ -63,7 +65,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
     vi.mocked(getStatus).mockReturnValue(neverSettles())
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     await waitFor(() =>
       expect(screen.getByText("Can't reach the backend. Check that it's running.")).toBeInTheDocument(),
@@ -74,7 +76,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     await waitFor(() => expect(screen.getByText('43%')).toBeInTheDocument())
     expect(screen.getByText('8 cores')).toBeInTheDocument()
@@ -84,7 +86,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     await waitFor(() => expect(screen.getByText('4.0 GB / 16.0 GB')).toBeInTheDocument())
   })
@@ -93,7 +95,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     // The agent reports total and free, not used — the page has to subtract.
     await waitFor(() => expect(screen.getByText('400 GB used')).toBeInTheDocument())
@@ -104,7 +106,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     await waitFor(() => expect(screen.getByText('devbox')).toBeInTheDocument())
     expect(screen.getByText('Windows 11')).toBeInTheDocument()
@@ -114,7 +116,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getStatus).mockResolvedValue({ ...STATUS_UP, agent: 'down', lastPollError: 'connection refused' })
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     // The snapshot itself loaded fine (it is storage-backed and survives an
     // agent outage) — connection state has to come from a different signal.
@@ -125,7 +127,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getStatus).mockReturnValue(neverSettles())
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
 
     await waitFor(() => expect(screen.getByText('devbox')).toBeInTheDocument())
     expect(screen.getByText('Unknown')).toBeInTheDocument()
@@ -136,7 +138,7 @@ describe('OverviewPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
 
-    render(<OverviewPage />)
+    renderWithHost(<OverviewPage />)
     await vi.waitFor(() => expect(getLatestSnapshot).toHaveBeenCalledTimes(1))
 
     // Wrapped in act(): the interval's refetch triggers a state update

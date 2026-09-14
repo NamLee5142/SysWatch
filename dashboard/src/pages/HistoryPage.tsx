@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 
 import { ApiError, listSnapshots } from '../api/client'
 import { TableSkeletonRows } from '../components/TableSkeletonRows'
+import { useSelectedHost } from '../hosts/SelectedHostContext'
 import { useApi } from '../hooks/useApi'
 import { useUpdateEffect } from '../hooks/useUpdateEffect'
 import { formatGB, formatMemoryMB } from '../lib/format'
@@ -10,20 +11,24 @@ import styles from './HistoryPage.module.css'
 const PAGE_SIZE = 25
 
 interface Filters {
-  host: string
   // Raw <input type="datetime-local"> values (local wall-clock time, no
   // offset), or '' when unset. Converted to UTC ISO only at request time.
   since: string
   until: string
 }
 
-const EMPTY_FILTERS: Filters = { host: '', since: '', until: '' }
+const EMPTY_FILTERS: Filters = { since: '', until: '' }
 
 function toIso(localValue: string): string | undefined {
   return localValue ? new Date(localValue).toISOString() : undefined
 }
 
 export function HistoryPage() {
+  // The host comes from the header, not from a field of its own. This page had
+  // a free-text "Any host" box before there was a selector; keeping both would
+  // be two controls for one idea, and the interesting question is which of them
+  // wins when they disagree.
+  const { hostName } = useSelectedHost()
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS)
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS)
   const [page, setPage] = useState(0)
@@ -31,7 +36,7 @@ export function HistoryPage() {
   const history = useApi((signal) =>
     listSnapshots(
       {
-        host: applied.host || undefined,
+        host: hostName ?? undefined,
         since: toIso(applied.since),
         until: toIso(applied.until),
         limit: PAGE_SIZE,
@@ -77,15 +82,6 @@ export function HistoryPage() {
       <h1>History</h1>
 
       <form className={styles.filters} onSubmit={handleSubmit}>
-        <label className={styles.field}>
-          <span>Host</span>
-          <input
-            type="text"
-            value={draft.host}
-            onChange={(event) => setDraft({ ...draft, host: event.target.value })}
-            placeholder="Any host"
-          />
-        </label>
         <label className={styles.field}>
           <span>Since</span>
           <input
@@ -146,7 +142,6 @@ export function HistoryPage() {
                 <thead>
                   <tr>
                     <th scope="col">Collected at</th>
-                    <th scope="col">Host</th>
                     <th scope="col">CPU</th>
                     <th scope="col">Memory</th>
                     <th scope="col">Disk</th>
@@ -156,7 +151,6 @@ export function HistoryPage() {
                   {history.data.items.map((item, index) => (
                     <tr key={`${item.systemInfo.hostName}-${item.collectedAt}-${index}`}>
                       <td>{new Date(item.collectedAt).toLocaleString()}</td>
-                      <td>{item.systemInfo.hostName}</td>
                       <td>{`${item.cpuInfo.usagePercent.toFixed(1)}%`}</td>
                       <td>{`${formatMemoryMB(item.memoryInfo.usedMB)} / ${formatMemoryMB(item.memoryInfo.totalMB)}`}</td>
                       <td>

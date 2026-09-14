@@ -6,6 +6,7 @@ import { SnapshotErrorMessage } from '../components/SnapshotErrorMessage'
 import { StatCard } from '../components/StatCard'
 import { StatCardSkeleton } from '../components/StatCardSkeleton'
 import { StatusDot } from '../components/StatusDot'
+import { useSelectedHost } from '../hosts/SelectedHostContext'
 import { usePolling } from '../hooks/usePolling'
 import { AGENT_STATE_LABEL } from '../lib/agentState'
 import { POLL_INTERVAL_MS } from '../lib/constants'
@@ -13,7 +14,8 @@ import { formatBytesPerSec, formatGB, formatMemoryMB } from '../lib/format'
 import styles from './OverviewPage.module.css'
 
 export function OverviewPage() {
-  const snapshot = usePolling((signal) => getLatestSnapshot(undefined, signal), POLL_INTERVAL_MS)
+  const { hostName } = useSelectedHost()
+  const snapshot = usePolling((signal) => getLatestSnapshot(hostName ?? undefined, signal), POLL_INTERVAL_MS)
   const status = usePolling(getStatus, POLL_INTERVAL_MS)
 
   const agentState = status.data?.agent ?? 'unknown'

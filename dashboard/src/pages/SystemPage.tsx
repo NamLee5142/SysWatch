@@ -6,6 +6,7 @@ import { StatCard } from '../components/StatCard'
 import { StatCardSkeleton } from '../components/StatCardSkeleton'
 import { StatusDot } from '../components/StatusDot'
 import { TableSkeletonRows } from '../components/TableSkeletonRows'
+import { useSelectedHost } from '../hosts/SelectedHostContext'
 import { usePolling } from '../hooks/usePolling'
 import { AGENT_STATE_LABEL } from '../lib/agentState'
 import { POLL_INTERVAL_MS } from '../lib/constants'
@@ -16,7 +17,8 @@ import styles from './SystemPage.module.css'
 // does not use the single-early-return loading gate every other page does —
 // those pages have exactly one thing to wait on, this one has three.
 export function SystemPage() {
-  const snapshot = usePolling((signal) => getLatestSnapshot(undefined, signal), POLL_INTERVAL_MS)
+  const { hostName } = useSelectedHost()
+  const snapshot = usePolling((signal) => getLatestSnapshot(hostName ?? undefined, signal), POLL_INTERVAL_MS)
   const status = usePolling(getStatus, POLL_INTERVAL_MS)
   const hosts = usePolling(getHosts, POLL_INTERVAL_MS)
 

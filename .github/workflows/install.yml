@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   smoke:
-    name: Install, upgrade, uninstall
+    name: Install, upgrade, push, uninstall
     runs-on: windows-latest
 
     steps:
@@ -103,6 +103,168 @@ jobs:
             } while ((Get-Date) -lt $deadline)
             if ($service.Status -ne 'Running') { throw "$name is '$($service.Status)' after the upgrade" }
           }
+
+      # --- the other kind of install ------------------------------------------
+      #
+      # Everything above is the single-machine install: the agent serves
+      # loopback and the backend beside it polls. This is the second case, and
+      # until now nothing exercised it at all.
+      #
+      # It is not two machines - that is the definition of done this does not
+      # close - but every part except the second machine is real: a token from
+      # the shipped command, written by the installer into the restricted
+      # config, read by the agent from that file, and authenticated at the
+      # ingestion endpoint.
+      #
+      # Loopback deliberately, and with no -AllowInsecurePush. A credential
+      # that never leaves the machine needs no opt-out, and that exemption is
+      # worth a test of its own: getting it wrong would force the warning on
+      # every single-machine install.
+      - name: Issue an agent token
+        shell: pwsh
+        run: |
+          # Set by the installer machine-wide, but this process started before
+          # it existed. The trap deployment.md warns about, met here for real.
+          $env:SYSWATCH_CONFIG_FILE = 'C:\ProgramData\SysWatch\syswatch.env'
+          $python = 'C:\Program Files\SysWatch\.venv\Scripts\python.exe'
+
+          Push-Location 'C:\Program Files\SysWatch\backend'
+          $output = & $python -m app.auth.create_agent_token --host ci-pushed --description "install workflow"
+          Pop-Location
+          if ($LASTEXITCODE -ne 0) { throw "create_agent_token exited $LASTEXITCODE" }
+
+          # "Agent token N issued for ...", then the token, then the notes.
+          $token = ($output | Where-Object { $_.Trim() } | Select-Object -Skip 1 -First 1).Trim()
+          if (-not $token) { throw "no token in: $($output -join '|')" }
+
+          # Registered with the runner so it is redacted if anything ever
+          # prints it. It is a credential even though this one is disposable.
+          Write-Host "::add-mask::$token"
+          "token=$token" >> $env:GITHUB_ENV
+          "issued a token for ci-pushed"
+
+      - name: Reinstall as a machine that pushes
+        run: |
+          .\deploy\Install-SysWatch.ps1 -SkipAdminAccount `
+            -BackendUrl http://127.0.0.1:8000/api/ingest/snapshot `
+            -AgentToken $env:token
+
+      - name: Assert the push configuration was written, and only what was asked for
+        shell: pwsh
+        run: |
+          $config = 'C:\ProgramData\SysWatch\syswatch.env'
+          $text = Get-Content $config -Raw
+
+          foreach ($key in 'SYSWATCH_AGENT_BACKEND_URL', 'SYSWATCH_AGENT_TOKEN') {
+            if ($text -notmatch "(?m)^$key=") { throw "$key is missing from syswatch.env" }
+          }
+
+          # Loopback does not need the opt-out, so the installer must not have
+          # written one. An install that quietly turns it on would make the
+          # setting meaningless everywhere else.
+          if ($text -match '(?m)^SYSWATCH_AGENT_ALLOW_INSECURE_PUSH=') {
+            throw "the installer set an insecure-push opt-out for a loopback backend"
+          }
+
+          # The same check the plain upgrade makes, because this install reads
+          # the secret back through the same code path the agent settings use.
+          $line = Select-String -Path $config -Pattern '^SYSWATCH_SESSION_SECRET=(.+)$'
+          if ($line.Matches[0].Groups[1].Value -cne $env:secret) {
+            throw "configuring a push regenerated the session secret"
+          }
+
+          # The file now holds a second credential; it must still be locked.
+          $acl = (icacls $config) -join "`n"
+          if ($acl -match 'Everyone|BUILTIN\\Users') { throw "syswatch.env is readable too widely:`n$acl" }
+          "push configured, secret kept, file still restricted"
+
+      - name: Assert the agent actually pushed
+        shell: pwsh
+        run: |
+          $env:SYSWATCH_CONFIG_FILE = 'C:\ProgramData\SysWatch\syswatch.env'
+          $python = 'C:\Program Files\SysWatch\.venv\Scripts\python.exe'
+          $listing = @()
+
+          # last_seen_at is written only when a push authenticates, so this is
+          # the whole chain in one assertion: config file to agent to network
+          # to token verification.
+          $deadline = (Get-Date).AddSeconds(120)
+          do {
+            Start-Sleep -Seconds 5
+            Push-Location 'C:\Program Files\SysWatch\backend'
+            $listing = & $python -m app.auth.create_agent_token --list
+            Pop-Location
+            $row = ($listing | Select-String -Pattern 'ci-pushed').Line
+            $used = $row -and ($row -notmatch 'never')
+          } while (-not $used -and (Get-Date) -lt $deadline)
+
+          if (-not $used) { throw "nothing arrived with the token:`n$($listing -join "`n")" }
+          "the token has been used"
+
+      - name: Assert the snapshot was filed under the token's host, not the machine's
+        shell: pwsh
+        run: |
+          $env:SYSWATCH_CONFIG_FILE = 'C:\ProgramData\SysWatch\syswatch.env'
+          $python = 'C:\Program Files\SysWatch\.venv\Scripts\python.exe'
+
+          # One line, like every other call into the install: a here-string
+          # inside a YAML block scalar is one indentation mistake from a parse
+          # error on a machine nobody is watching.
+          $listHosts = 'from app.db import init_engine; from app.repositories import SnapshotStore; init_engine(); print(",".join(h.host_name for h in SnapshotStore().hosts()))'
+
+          Push-Location 'C:\Program Files\SysWatch\backend'
+          $hosts = (& $python -c $listHosts) -join ''
+          Pop-Location
+
+          "hosts: $hosts"
+
+          # The name came from the credential. The machine calls itself
+          # something else entirely, and the poller files under that - so both
+          # names present is the proof that identity is not read from the
+          # payload, where this agent would have reported its own hostname.
+          if ($hosts -notmatch 'ci-pushed') { throw "nothing filed under 'ci-pushed'" }
+          if ($hosts -notmatch [regex]::Escape($env:COMPUTERNAME)) {
+            throw "the polled host '$env:COMPUTERNAME' is missing, so these may be the same rows"
+          }
+          "pushed and polled snapshots are filed under different hosts"
+
+      # The guard rail, in a real run rather than a unit test. It has to refuse
+      # *and* leave the install alone: a check that fires after copying files
+      # would be a check that half-upgrades a working machine.
+      - name: Assert a remote plain-HTTP push is refused, and nothing is touched
+        shell: pwsh
+        run: |
+          $before = Get-Content C:\ProgramData\SysWatch\syswatch.env -Raw
+
+          # A child process, so the refusal's own 'exit 1' can be read rather
+          # than ending this step. The messages go through Write-Host, so
+          # stdout carries them and stderr needs no redirect - which under this
+          # shell's ErrorActionPreference would be its own failure mode.
+          $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+            -File .\deploy\Install-SysWatch.ps1 -SkipAdminAccount `
+            -BackendUrl http://backend.invalid:8000/api/ingest/snapshot `
+            -AgentToken not-a-real-token
+          $code = $LASTEXITCODE
+
+          if ($code -eq 0) { throw "the installer accepted a plain-HTTP push to another machine" }
+          if (($output -join ' ') -notmatch 'in clear') {
+            throw "refused, but not for the expected reason:`n$($output -join "`n")"
+          }
+
+          if ((Get-Content C:\ProgramData\SysWatch\syswatch.env -Raw) -cne $before) {
+            throw "the refused install rewrote the configuration anyway"
+          }
+          foreach ($name in 'SysWatchAgent', 'SysWatchBackend') {
+            if ((Get-Service -Name $name).Status -ne 'Running') {
+              throw "$name was stopped by an install that refused to run"
+            }
+          }
+          "refused, and the existing install is untouched"
+
+          # The runner appends `exit $LASTEXITCODE` to every step, and the
+          # refusal deliberately left it at 1. Without this, a step that passed
+          # reports the failure it was checking for.
+          exit 0
 
       - name: Uninstall, keeping the data
         run: .\deploy\Uninstall-SysWatch.ps1

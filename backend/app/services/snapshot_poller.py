@@ -51,6 +51,14 @@ class SnapshotPoller:
         self._last_success_at = None
         self._last_error = None
         self._consecutive_failures = 0
+        # Which machine this poller's agent turned out to be.
+        #
+        # Not configured, because it cannot be: the poller is pointed at a URL,
+        # and the name behind that URL is whatever the agent reports. Kept so
+        # /status can say which host its answer is about - a dashboard showing
+        # a pushed host must not read "agent unreachable" off a poller that has
+        # nothing to do with it.
+        self._agent_host = None
 
     @property
     def running(self):
@@ -65,6 +73,15 @@ class SnapshotPoller:
     def last_success_at(self):
         """When a snapshot last actually arrived from the agent."""
         return self._last_success_at
+
+    @property
+    def agent_host(self):
+        """The host name the polled agent reports, once it has answered once.
+
+        None until then, and it stays at the last known name during an outage -
+        which is the point: it is what says whose outage this is.
+        """
+        return self._agent_host
 
     @property
     def last_error(self):
@@ -119,6 +136,12 @@ class SnapshotPoller:
         else:
             self._note_reachable()
             self._record(error=None, collected=True)
+            # Taken from the payload rather than from a setting. This is the
+            # one place the agent's self-reported name is the right answer:
+            # the poller reached it at a configured address, so there is no
+            # third party whose word is being taken - unlike the ingestion
+            # path, where the credential names the host.
+            self._agent_host = snapshot.systemInfo.hostName
             # Only here — never after a failed or empty poll — so an unreachable
             # agent cannot raise a storm of false alerts. Agent-down is /status's
             # job, not the alert engine's.

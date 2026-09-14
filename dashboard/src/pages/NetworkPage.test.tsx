@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { renderWithHost } from '../test/renderWithHost'
 import { getLatestSnapshot, getSnapshotSeries, NetworkError } from '../api/client'
 import type { Series, Snapshot } from '../api/types'
 import { NetworkPage } from './NetworkPage'
@@ -64,7 +65,7 @@ describe('NetworkPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<NetworkPage />)
+    renderWithHost(<NetworkPage />)
 
     expect(screen.getByText('Loading network interfaces')).toBeInTheDocument()
     expect(screen.getByText('Loading Network throughput received over time')).toBeInTheDocument()
@@ -75,7 +76,7 @@ describe('NetworkPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<NetworkPage />)
+    renderWithHost(<NetworkPage />)
 
     await waitFor(() => expect(screen.getByText('Wi-Fi')).toBeInTheDocument())
 
@@ -99,7 +100,7 @@ describe('NetworkPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<NetworkPage />)
+    renderWithHost(<NetworkPage />)
 
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(2))
     const metrics = vi.mocked(getSnapshotSeries).mock.calls.map((call) => call[0].metric)
@@ -110,7 +111,7 @@ describe('NetworkPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<NetworkPage />)
+    renderWithHost(<NetworkPage />)
 
     await waitFor(() =>
       expect(screen.getByText("Can't reach the backend. Check that it's running.")).toBeInTheDocument(),
@@ -122,7 +123,7 @@ describe('NetworkPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(withoutNetwork)
     vi.mocked(getSnapshotSeries).mockResolvedValue({ ...SERIES, points: [] })
 
-    render(<NetworkPage />)
+    renderWithHost(<NetworkPage />)
 
     await waitFor(() =>
       expect(screen.getByText('This agent does not report network data.')).toBeInTheDocument(),

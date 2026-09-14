@@ -97,6 +97,15 @@ export type AgentState = 'up' | 'down' | 'unknown'
 export interface Status {
   backend: 'ok'
   agent: AgentState
+  /**
+   * Which host `agent` is about, or null before the polled agent has answered.
+   *
+   * The backend polls one machine and knows nothing about the reachability of
+   * hosts that push to it, so `agent` must be ignored while looking at any
+   * other host - otherwise the dashboard reports one machine's outage against
+   * another machine's name.
+   */
+  agentHost: string | null
   pollerRunning: boolean
   lastPollAt: string | null
   lastSuccessAt: string | null

@@ -57,6 +57,7 @@ function route(url: string): Response {
     return json({
       backend: 'ok',
       agent: 'unknown',
+      agentHost: 'devbox',
       pollerRunning: true,
       lastPollAt: null,
       lastSuccessAt: null,

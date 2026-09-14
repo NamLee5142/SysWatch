@@ -48,7 +48,7 @@ describe('AlertIndicator', () => {
 
     renderIndicator()
 
-    const link = await screen.findByRole('link', { name: '3 active alerts' })
+    const link = await screen.findByRole('link', { name: '3 active alerts across all hosts' })
     expect(link).toHaveTextContent('3')
     expect(link).toHaveAttribute('href', '/alerts')
   })
@@ -58,7 +58,7 @@ describe('AlertIndicator', () => {
 
     renderIndicator()
 
-    await waitFor(() => expect(screen.getByRole('link', { name: '1 active alert' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('link', { name: '1 active alert across all hosts' })).toBeInTheDocument())
   })
 
   it('falls back to zero rather than showing an error when the poll fails', async () => {
@@ -69,5 +69,20 @@ describe('AlertIndicator', () => {
     // Give the rejection a tick to land.
     await waitFor(() => expect(getActiveAlerts).toHaveBeenCalled())
     expect(screen.getByRole('link', { name: 'No active alerts' })).toHaveTextContent('0')
+  })
+
+  it('says the count is fleet-wide, because the header beside it names one host', async () => {
+    // A bare "2" next to "devbox" reads as devbox's two. It is not, and the
+    // difference matters: the whole reason this stays unscoped is so another
+    // machine's critical alert is not missed because of which host is shown.
+    // Two items is all this needs: the label is about the count, and the
+    // count is what must not be read as one host's.
+    vi.mocked(getActiveAlerts).mockResolvedValue({ items: [{}, {}] } as never)
+
+    renderIndicator()
+
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /across all hosts/ })).toBeInTheDocument(),
+    )
   })
 })

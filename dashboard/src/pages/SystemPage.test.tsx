@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getHosts, getLatestSnapshot, getStatus, NetworkError } from '../api/client'
+import { renderWithHost } from '../test/renderWithHost'
 import type { HostList, Snapshot, Status } from '../api/types'
 import { SystemPage } from './SystemPage'
 
@@ -26,6 +27,7 @@ const SNAPSHOT: Snapshot = {
 const STATUS_UP: Status = {
   backend: 'ok',
   agent: 'up',
+  agentHost: 'devbox',
   pollerRunning: true,
   lastPollAt: new Date().toISOString(),
   lastSuccessAt: new Date().toISOString(),
@@ -62,7 +64,7 @@ describe('SystemPage', () => {
   it('renders hostname and OS once the snapshot loads', async () => {
     resolveAll()
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('devbox')).toBeInTheDocument())
     expect(screen.getByText('Windows 11')).toBeInTheDocument()
@@ -73,7 +75,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     // Let the other two sections actually resolve first — right after the
     // initial render all three legitimately show a loading state for a
@@ -89,7 +91,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
   })
@@ -99,7 +101,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() =>
       expect(screen.getByText("Can't reach the backend. Check that it's running.")).toBeInTheDocument(),
@@ -111,7 +113,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockRejectedValue(new Error('boom'))
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load status.')).toBeInTheDocument())
     expect(screen.queryByText('Loading connection status')).not.toBeInTheDocument()
@@ -122,7 +124,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockReturnValue(neverSettles())
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('devbox')).toBeInTheDocument())
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
@@ -135,7 +137,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
     vi.mocked(getHosts).mockReturnValue(neverSettles())
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('devbox')).toBeInTheDocument())
     await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument())
@@ -153,7 +155,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument())
     expect(screen.getByText('Running')).toBeInTheDocument()
@@ -164,7 +166,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue({ ...STATUS_UP, pollerRunning: false })
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Stopped')).toBeInTheDocument())
   })
@@ -174,7 +176,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue({ ...STATUS_UP, lastSuccessAt: null })
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Never')).toBeInTheDocument())
   })
@@ -184,7 +186,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue({ ...STATUS_UP, agent: 'down', lastPollError: 'connection refused' })
     vi.mocked(getHosts).mockResolvedValue(HOSTS)
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('connection refused')).toBeInTheDocument())
   })
@@ -192,7 +194,7 @@ describe('SystemPage', () => {
   it('omits the error row entirely when there is no error', async () => {
     resolveAll()
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument())
     expect(screen.queryByText('Last error')).not.toBeInTheDocument()
@@ -201,7 +203,7 @@ describe('SystemPage', () => {
   it('renders every reporting host with its snapshot count', async () => {
     resolveAll()
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
     expect(screen.getByRole('cell', { name: 'buildbox' })).toBeInTheDocument()
@@ -215,7 +217,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
     vi.mocked(getHosts).mockResolvedValue({ items: [] })
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('No hosts have reported yet.')).toBeInTheDocument())
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
@@ -226,7 +228,7 @@ describe('SystemPage', () => {
     vi.mocked(getStatus).mockResolvedValue(STATUS_UP)
     vi.mocked(getHosts).mockRejectedValue(new Error('boom'))
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load hosts.')).toBeInTheDocument())
     // The other two sections are unaffected by the hosts failure.
@@ -238,7 +240,7 @@ describe('SystemPage', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     resolveAll()
 
-    render(<SystemPage />)
+    renderWithHost(<SystemPage />)
     await vi.waitFor(() => expect(getLatestSnapshot).toHaveBeenCalledTimes(1))
 
     await act(async () => {

@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { renderWithHost } from '../test/renderWithHost'
 import { getLatestSnapshot, getSnapshotSeries, NetworkError } from '../api/client'
 import type { Series, Snapshot } from '../api/types'
 import { MemoryPage } from './MemoryPage'
@@ -62,7 +63,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     // Two independent sections, each announcing its own loading state.
     expect(screen.getByText('Loading Memory')).toBeInTheDocument()
@@ -73,7 +74,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new Error('boom'))
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(screen.getByText('Unable to load the latest snapshot.')).toBeInTheDocument())
   })
@@ -82,7 +83,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockRejectedValue(new NetworkError(new Error('offline')))
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() =>
       expect(screen.getByText("Can't reach the backend. Check that it's running.")).toBeInTheDocument(),
@@ -93,7 +94,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     // 4096 / 16384 = 25%.
     await waitFor(() => expect(screen.getByText('25%')).toBeInTheDocument())
@@ -103,7 +104,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(screen.getByText('4.0 GB / 16.0 GB')).toBeInTheDocument())
   })
@@ -112,7 +113,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
     const [params] = vi.mocked(getSnapshotSeries).mock.calls[0]
@@ -129,7 +130,7 @@ describe('MemoryPage', () => {
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
     const user = userEvent.setup()
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
 
     await user.click(screen.getByRole('radio', { name: '1h' }))
@@ -143,7 +144,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(getSnapshotSeries).toHaveBeenCalledTimes(1))
     await act(async () => {
@@ -156,7 +157,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument())
   })
@@ -165,7 +166,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockResolvedValue({ ...SERIES, points: [] })
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
   })
@@ -174,7 +175,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockReturnValue(neverSettles())
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(screen.getByText('25%')).toBeInTheDocument())
     expect(screen.getByText('Loading Memory usage over time')).toBeInTheDocument()
@@ -185,7 +186,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockResolvedValue(SNAPSHOT)
     vi.mocked(getSnapshotSeries).mockRejectedValue(new Error('boom'))
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(screen.getByText('No data for this range.')).toBeInTheDocument())
     expect(screen.queryByText('Loading Memory usage over time')).not.toBeInTheDocument()
@@ -195,7 +196,7 @@ describe('MemoryPage', () => {
     vi.mocked(getLatestSnapshot).mockReturnValue(neverSettles())
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(document.querySelector('.recharts-line-curve')).toBeInTheDocument())
     expect(screen.getByText('Loading Memory')).toBeInTheDocument()
@@ -208,7 +209,7 @@ describe('MemoryPage', () => {
     })
     vi.mocked(getSnapshotSeries).mockResolvedValue(SERIES)
 
-    render(<MemoryPage />)
+    renderWithHost(<MemoryPage />)
 
     await waitFor(() => expect(screen.getByText('0%')).toBeInTheDocument())
   })

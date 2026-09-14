@@ -12,7 +12,7 @@ import {
   updateAlertRule,
 } from '../api/client'
 import type { Alert, AlertRule } from '../api/types'
-import { renderWithAuth, TEST_ADMIN, TEST_VIEWER } from '../test/renderWithAuth'
+import { renderWithAuth, TEST_ADMIN, TEST_VIEWER, testHost } from '../test/renderWithAuth'
 import { AlertsPage } from './AlertsPage'
 
 vi.mock('../api/client', async (importOriginal) => {
@@ -290,5 +290,50 @@ describe('AlertsPage rule controls', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Input should be a finite number')
     // Closing it would throw away what they typed.
     expect(screen.getByLabelText('Name')).toHaveValue('Bad rule')
+  })
+})
+
+describe('more than one host', () => {
+  it('shows two rows for two hosts breaching the same rule', async () => {
+    // The done-when. Same rule, same threshold, same value - the only thing
+    // telling them apart is the host, so the column that carries it is what
+    // makes this page usable with a fleet rather than a machine.
+    resolveAll()
+    vi.mocked(getActiveAlerts).mockResolvedValue({
+      items: [alert({ id: 1, hostName: 'devbox' }), alert({ id: 2, hostName: 'buildbox' })],
+    })
+
+    renderWithAuth(<AlertsPage />)
+
+    const devbox = await screen.findByRole('row', { name: /devbox/ })
+    const buildbox = await screen.findByRole('row', { name: /buildbox/ })
+    expect(devbox).not.toBe(buildbox)
+    // Both name the same rule, so the rule is not what distinguishes them.
+    expect(within(devbox).getByText('CPU usage critical')).toBeInTheDocument()
+    expect(within(buildbox).getByText('CPU usage critical')).toBeInTheDocument()
+  })
+
+  it('shows alerts from hosts other than the selected one', async () => {
+    // Every other page is scoped to the header's host. This one is not, and
+    // that is the point: an alert on a machine nobody is looking at is exactly
+    // the one worth surfacing.
+    resolveAll()
+    vi.mocked(getActiveAlerts).mockResolvedValue({
+      items: [alert({ id: 1, hostName: 'buildbox' })],
+    })
+
+    renderWithAuth(<AlertsPage />, { hosts: [testHost('devbox'), testHost('buildbox')] })
+
+    expect(await screen.findByRole('row', { name: /buildbox/ })).toBeInTheDocument()
+  })
+
+  it('says so, rather than leaving it to be inferred', async () => {
+    resolveAll()
+
+    renderWithAuth(<AlertsPage />)
+
+    expect(
+      await screen.findByText('Alerts from every host, whichever one the header is showing.'),
+    ).toBeInTheDocument()
   })
 })

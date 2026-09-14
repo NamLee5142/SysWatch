@@ -150,3 +150,65 @@ def test_invalid_values_are_rejected_at_startup(clean_env, name, value):
     # on the wrong schedule.
     with pytest.raises(ValidationError):
         Settings()
+
+
+# --- credentials must not leak through a repr --------------------------------
+
+SECRETS = [
+    ("SYSWATCH_SESSION_SECRET", "session-secret-do-not-print"),
+    ("SYSWATCH_SMTP_PASSWORD", "smtp-password-do-not-print"),
+    ("SYSWATCH_WEBHOOK_URL", "https://hooks.example.com/T000/token-do-not-print"),
+]
+
+
+@pytest.mark.parametrize("name, value", SECRETS)
+def test_a_credential_never_appears_in_the_repr(clean_env, name, value):
+    """Printing the settings must not be a way to lose a secret.
+
+    These were documented as "never repr'd" while being plain strings that
+    pydantic printed like any other field. Nothing in the application printed a
+    Settings, so nothing leaked - but that is a fact about today's code, not a
+    property of this class, and the two files involved are not protected alike:
+    syswatch.env is restricted to Administrators and SYSTEM, while the log
+    beside it is readable by every account on the machine.
+    """
+    clean_env.setenv(name, value)
+
+    settings = Settings()
+
+    assert value not in repr(settings)
+    assert value not in str(settings)
+    assert value not in f"{settings}"
+
+
+@pytest.mark.parametrize("name, value", SECRETS)
+def test_the_value_is_still_readable_by_name(clean_env, name, value):
+    """Redacted in the repr, not withheld from the code that needs it."""
+    clean_env.setenv(name, value)
+
+    settings = Settings()
+    field = name.removeprefix("SYSWATCH_").lower()
+
+    assert getattr(settings, field) == value
+
+
+def test_the_repr_still_shows_what_it_is_for(clean_env):
+    """A repr that redacted everything would just be useless instead of unsafe."""
+    clean_env.setenv("SYSWATCH_PORT", "9123")
+
+    text = repr(Settings())
+
+    assert "9123" in text
+    assert "127.0.0.1" in text
+
+
+def test_an_unset_credential_is_not_redacted_into_looking_set(clean_env):
+    """`***` against an empty field would claim a credential that is not there.
+
+    Reading "smtp_password='***'" while debugging mail that never sends would
+    send somebody looking for a wrong password rather than a missing one.
+    """
+    text = repr(Settings())
+
+    assert "smtp_password=''" in text
+    assert "webhook_url=''" in text

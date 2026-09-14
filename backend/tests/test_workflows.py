@@ -3,6 +3,7 @@
 Trigger configuration has no tests of its own anywhere else, and it is the
 kind of thing that is edited to fix one symptom and quietly re-broken later.
 """
+import re
 from pathlib import Path
 
 import pytest
@@ -81,3 +82,31 @@ def test_the_release_workflow_is_driven_by_a_tag():
 
     assert on["push"]["tags"] == ["v*"]
     assert "pull_request" not in on
+
+
+def test_the_install_workflow_covers_both_kinds_of_install():
+    """The plain install is not the one that breaks in the field.
+
+    Sprint 12 gave the installer a second mode - an agent configured to push to
+    a backend elsewhere - and for most of the sprint CI exercised only the
+    first. A pushing install has more to go wrong than a plain one and less to
+    notice it: it succeeds, the services run, and the only symptom of a mistake
+    is a host that never appears somewhere else.
+
+    This checks that the coverage exists, not that it passes; only the run
+    itself can say that. It is here so that deleting the steps is a decision
+    rather than an edit.
+    """
+    text = (WORKFLOWS / "install.yml").read_text(encoding="utf-8")
+
+    plain = re.search(r"Install-SysWatch\.ps1 -SkipAdminAccount\s*$", text, re.M)
+    assert plain, "install.yml no longer covers the single-machine install"
+
+    assert "-BackendUrl" in text, (
+        "install.yml no longer installs an agent that pushes"
+    )
+    assert "create_agent_token" in text, (
+        "the workflow's token must come from the shipped command, so that a "
+        "change to how tokens are issued breaks this rather than passing on a "
+        "fixture the product does not use"
+    )

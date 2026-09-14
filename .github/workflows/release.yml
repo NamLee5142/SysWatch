@@ -147,4 +147,10 @@ jobs:
           Needs Python 3.10 or newer on PATH. The backend is registered as a
           service only when nssm is installed; otherwise the installer prints
           the commands to run.
+
+          Alerts are recorded and written to the log from the first poll, and
+          sent nowhere until a transport is configured. Set SYSWATCH_SMTP_HOST
+          or SYSWATCH_WEBHOOK_URL in syswatch.env - see "Alert delivery" in
+          docs/deployment.md for what each one needs and what is refused at
+          startup.
           NOTES

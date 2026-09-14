@@ -50,3 +50,25 @@ class CurrentUser(BaseModel):
         independent of the database layer — the rule Snapshot and Alert follow.
         """
         return cls(username=record.username, role=record.role)
+
+
+class CurrentAgent(BaseModel):
+    """Which machine a pushed request speaks for.
+
+    Deliberately not a CurrentUser. An agent is not an account: it has no role,
+    it cannot read anything, and it may only file snapshots for the one host its
+    credential names. Modelling it as a user with a role would put both on the
+    same authorization ladder, and the first person to add `role="agent"` to a
+    role check would widen what an agent can reach.
+
+    hostName here is the *identity*, taken from the credential. The hostName
+    inside a pushed payload is self-reported and is not this.
+    """
+
+    host_name: str
+    token_id: int
+
+    @classmethod
+    def from_record(cls, record) -> "CurrentAgent":
+        """Build from an AgentTokenRecord, structurally rather than by import."""
+        return cls(host_name=record.host_name, token_id=record.id)

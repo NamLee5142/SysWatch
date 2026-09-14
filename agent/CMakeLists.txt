@@ -24,6 +24,12 @@ add_library(agent_core STATIC
     src/scheduler/Scheduler.cpp
     src/http/HTTPServer.cpp
     src/http/HttpParser.cpp
+    src/http/HttpClient.cpp
+    src/http/SnapshotJson.cpp
+    src/push/SnapshotPusher.cpp
+    src/push/BufferedPusher.cpp
+    src/http/Url.cpp
+    src/config/ConfigFile.cpp
     src/runtime/AgentRuntime.cpp
     src/runtime/CommandLine.cpp
     src/service/WindowsService.cpp
@@ -83,6 +89,23 @@ function(add_agent_test name source)
     target_link_libraries(${name} PRIVATE agent_core)
     target_include_directories(${name} PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
+    # Every test here checks with assert(), and a Release build defines NDEBUG,
+    # which compiles assert() to nothing. CI builds Release. So each of these
+    # executables ran to the end of main(), printed "passed" and checked
+    # nothing - a suite that could not fail, in the configuration that ships.
+    #
+    # Demonstrated by making Logger.cpp stamp local time instead of UTC, the
+    # thing logger_tests was written to catch: it printed "Logger tests passed"
+    # while logging 09:16 local as 09:16Z.
+    #
+    # Undefined per test target rather than by changing the build type: the
+    # agent should keep shipping -O3, and the tests are not what ships.
+    if (MSVC)
+        target_compile_options(${name} PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(${name} PRIVATE -UNDEBUG)
+    endif()
+
     if (AGENT_STATIC_LINK_OPTIONS)
         target_link_options(${name} PRIVATE ${AGENT_STATIC_LINK_OPTIONS})
     endif()
@@ -109,3 +132,10 @@ add_agent_test(http_server_snapshot_tests tests/http_server_snapshot_tests.cpp)
 add_agent_test(http_server_concurrency_tests tests/http_server_concurrency_tests.cpp)
 add_agent_test(http_server_integration_tests tests/http_server_integration_tests.cpp)
 add_agent_test(http_request_parse_tests tests/http_request_parse_tests.cpp)
+add_agent_test(url_tests tests/url_tests.cpp)
+add_agent_test(http_client_tests tests/http_client_tests.cpp)
+add_agent_test(http_client_parsing_tests tests/http_client_parsing_tests.cpp)
+add_agent_test(snapshot_pusher_tests tests/snapshot_pusher_tests.cpp)
+add_agent_test(push_security_tests tests/push_security_tests.cpp)
+add_agent_test(buffered_pusher_tests tests/buffered_pusher_tests.cpp)
+add_agent_test(config_file_tests tests/config_file_tests.cpp)

@@ -344,6 +344,18 @@ export function AlertsPage() {
   return (
     <div className={styles.page}>
       <h1>Alerts</h1>
+      {/* Every other page shows the host chosen in the header. This one does
+          not, and after that change it has to say so: an operator reading
+          "Alerts" on a page where everything else is scoped would reasonably
+          assume these are this machine's.
+
+          Fleet-wide is the right default and not merely the simpler one -
+          missing another machine's critical alert because of which host you
+          happened to be looking at is the failure a monitoring tool exists to
+          prevent. The Host column is what tells them apart. */}
+      <p className={styles.scopeNote}>
+        Alerts from every host, whichever one the header is showing.
+      </p>
 
       <TableSection
         title="Active"

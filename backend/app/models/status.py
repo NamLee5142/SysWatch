@@ -19,6 +19,11 @@ class Status(BaseModel):
 
     backend: Literal["ok"] = "ok"
     agent: AgentState
+    # Which host the `agent` field is about, or null before the polled agent
+    # has answered once. A dashboard showing any other host must ignore
+    # `agent` entirely: this backend polls one machine and knows nothing about
+    # the reachability of the ones that push to it.
+    agentHost: Optional[str] = None
     pollerRunning: bool
     # Heartbeat of the loop: when it last completed a tick, successful or not.
     lastPollAt: Optional[datetime] = None

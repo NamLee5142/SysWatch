@@ -100,18 +100,21 @@ def verify_security_configuration(settings):
     if not settings.auth_enabled:
         if not settings.dev_mode:
             # A warning was not enough. Anyone reading a startup log sees a
-            # hundred lines of normal, and this one says the whole API is open
+            # hundred lines of normal, and this one says the read API is open
             # to anyone who can reach the port. Refusing to start is the only
             # version of this message that cannot be scrolled past.
             raise InsecureConfiguration(
-                "SYSWATCH_AUTH_ENABLED is false, which opens every endpoint and "
-                "treats every caller as an administrator. Set SYSWATCH_DEV_MODE=true "
-                "if this is a development machine; otherwise remove the setting."
+                "SYSWATCH_AUTH_ENABLED is false, which opens every session-protected "
+                "endpoint and treats every caller as an administrator. Agent "
+                "ingestion is the one exception and still requires its token. Set "
+                "SYSWATCH_DEV_MODE=true if this is a development machine; otherwise "
+                "remove the setting."
             )
 
         warnings.append(
-            "SYSWATCH_AUTH_ENABLED is false: every endpoint is open and every "
-            "caller is treated as an administrator."
+            "SYSWATCH_AUTH_ENABLED is false: every session-protected endpoint is "
+            "open and every caller is treated as an administrator. Agent ingestion "
+            "still requires its token."
         )
         return warnings
 
