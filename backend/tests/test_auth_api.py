@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.api import auth as auth_api
 from app.api.auth import SESSION_COOKIE, login_limiter
 from app.auth.password import hash_password
+from app.auth import rate_limit
 from app.auth.rate_limit import DEFAULT_LIMIT, LoginRateLimiter
 from app.db import get_session as db_scope
 from app.db.models import SessionRecord, UserRecord
@@ -56,6 +57,23 @@ def login(client, username="admin", password=PASSWORD):
 
 # --- login -----------------------------------------------------------------
 
+
+class _FakeClock:
+    """Stands in for the `time` module inside app.auth.rate_limit.
+
+    Only monotonic() is needed, which is all the limiter reads. Patched onto
+    the module rather than onto `time` itself, so nothing else in the process
+    sees a frozen clock.
+    """
+
+    def __init__(self):
+        self._now = 1000.0
+
+    def monotonic(self):
+        return self._now
+
+    def advance(self, seconds):
+        self._now += seconds
 
 def test_valid_credentials_return_the_user_and_set_a_cookie(client):
     make_user(role="viewer")
@@ -375,11 +393,19 @@ def test_deleting_a_user_ends_their_live_session(client):
 
 
 def test_the_rate_limit_recovers_after_its_window(monkeypatch, client):
-    # Comfortably longer than the two Argon2 verifies it takes to reach the
-    # limit — a window under ~100ms expires between the attempts meant to fill
-    # it, and nothing is ever limited.
+    """The window passes because the clock says so, not because we waited.
+
+    This used to fill the limiter for real and then sleep past a 0.5 s window.
+    Both halves were a race against wall-clock time: the window had to outlast
+    two Argon2 verifies (about 54 ms each here, and several times that on a
+    loaded CI runner) or nothing was ever limited, and the sleep had to outlast
+    the window on a clock that moves in 15.6 ms steps on Windows before Python
+    3.13. Driving the limiter's clock instead removes both races and the wait.
+    """
+    clock = _FakeClock()
+    monkeypatch.setattr(rate_limit, "time", clock)
     monkeypatch.setattr(
-        auth_api, "login_limiter", LoginRateLimiter(limit=2, window_seconds=0.5)
+        auth_api, "login_limiter", LoginRateLimiter(limit=2, window_seconds=60)
     )
     make_user()
 
@@ -387,7 +413,7 @@ def test_the_rate_limit_recovers_after_its_window(monkeypatch, client):
         assert login(client, password="wrong password").status_code == 401
     assert login(client, password="wrong password").status_code == 429
 
-    time.sleep(0.55)
+    clock.advance(61)
 
     # A lockout that never lifts is an outage, not a defence.
     assert login(client).status_code == 200
