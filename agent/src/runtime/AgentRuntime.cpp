@@ -116,8 +116,12 @@ int runUntilStopped(const agent::AgentConfig &config,
         // Almost always the port already being in use. Before this the agent
         // came up, listened to nothing and reported nothing, so the only
         // symptom was a backend that never collected.
+        // ASCII only, like every other string this prints. A Windows console
+        // is CP-1252 by default, so an em dash here arrives as "a???" and the
+        // first thing an operator sees when the agent will not start looks
+        // like a second fault on top of the first.
         log.error("Could not listen on 127.0.0.1:" + std::to_string(config.serverPort) +
-                  " — is another agent already running?");
+                  " - is another agent already running?");
         return ExitBindFailed;
     }
 

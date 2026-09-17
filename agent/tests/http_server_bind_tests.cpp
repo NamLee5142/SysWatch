@@ -186,7 +186,7 @@ int main() {
     for (const in_addr &address : external) {
         if (canConnect(address, TestPort, ConnectTimeoutMs)) {
             std::cerr << "FAIL: agent is reachable on " << describe(address)
-                      << " — the HTTP server must bind 127.0.0.1 only." << std::endl;
+                      << " - the HTTP server must bind 127.0.0.1 only." << std::endl;
             ++failures;
         } else {
             std::cout << "Not reachable on " << describe(address) << " (expected)." << std::endl;
